@@ -1,0 +1,11 @@
+{
+  "name": "purescript-csv-stream",
+  "version": "v1.2.19",
+  "dependencies": {
+    "csv-parse": "^5.5.5",
+    "csv-stringify": "^6.4.6"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.5"
+  }
+}
