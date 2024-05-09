@@ -1,81 +1,42 @@
-# purescript-csv-stream
+# purescript-node-stream-pipes
 
-Type-safe bindings for the streaming API of `csv-parse` and `csv-stringify`.
+Interact with node streams in object mode using [`Pipes`]!
+
+## Example
+```purescript
+import Prelude
+
+import Effect.Aff (launchAff_)
+import Effect (Effect)
+import Effect.Class (liftEffect)
+import Effect.Console (log)
+import Pipes.Prelude ((>->))
+import Pipes.Prelude as Pipes
+import Pipes.Core as Pipes.Core
+import Pipes.Node.FS.Stream as FS
+import Pipes.Node.Zlib as Zlib
+import Pipes.CSV.Parse as CSV.Parse
+
+-- == my-zipped-data.csv ==
+-- id,foo,is_deleted
+-- 1,hello,f
+-- 2,goodbye,t
+
+-- Logs:
+-- {id: 1, foo: "hello", is_deleted: false}
+-- {id: 2, foo: "goodbye", is_deleted: true}
+main :: Effect Unit
+main =
+  Pipes.Core.runEffect
+    $ FS.createReadStream "my-zipped-data.csv.gz"
+        >-> Zlib.gunzip
+        >-> CSV.Parse.parse @{id :: Int, foo :: String, is_deleted :: Boolean}
+        >-> Pipes.mapM (liftEffect <<< log)
+```
 
 ## Installing
 ```bash
-spago install csv-stream
-{bun|yarn|npm|pnpm} install csv-parse csv-stringify
+spago install node-stream-pipes
 ```
 
-## Examples
-### Stream
-```purescript
-module Main where
-
-import Prelude
-
-import Effect (Effect)
-import Effect.Class (liftEffect)
-import Effect.Aff (launchAff_)
-import Node.Stream (pipe)
-import Node.Stream as Stream
-import Node.Stream.CSV.Stringify as CSV.Stringify
-import Node.Stream.CSV.Parse as CSV.Parse
-
-type MyCSVType1 = {a :: Int, b :: Int, bar :: String, baz :: Boolean}
-type MyCSVType2 = {ab :: Int, bar :: String, baz :: Boolean}
-
-atob :: MyCSVType1 -> MyCSVType2
-atob {a, b, bar, baz} = {ab: a + b, bar, baz}
-
-myCSV :: String
-myCSV = "a,b,bar,baz\n1,2,\"hello, world!\",true\n3,3,,f"
-
-main :: Effect Unit
-main = launchAff_ do
-  parser <- liftEffect $ CSV.Parse.make {}
-  stringifier <- liftEffect $ CSV.Stringify.make {}
-
-  input <- liftEffect $ Stream.readableFromString myCSV
-  liftEffect $ Stream.pipe input parser
-
-  records <- CSV.Parse.readAll parser
-  liftEffect $ for_ records \r -> CSV.Stringify.write $ atob r
-  liftEffect $ Stream.end stringifier
-
-  -- "ab,bar,baz\n3,\"hello, world!\",true\n6,,false"
-  csvString <- CSV.Stringify.readAll stringifier
-  pure unit
-```
-
-### Synchronous
-```purescript
-module Main where
-
-import Prelude
-
-import Effect (Effect)
-import Effect.Class (liftEffect)
-import Effect.Aff (launchAff_)
-import Node.Stream (pipe)
-import Node.Stream as Stream
-import Node.Stream.CSV.Stringify as CSV.Stringify
-import Node.Stream.CSV.Parse as CSV.Parse
-
-type MyCSVType1 = {a :: Int, b :: Int, bar :: String, baz :: Boolean}
-type MyCSVType2 = {ab :: Int, bar :: String, baz :: Boolean}
-
-atob :: MyCSVType1 -> MyCSVType2
-atob {a, b, bar, baz} = {ab: a + b, bar, baz}
-
-myCSV :: String
-myCSV = "a,b,bar,baz\n1,2,\"hello, world!\",true\n3,3,,f"
-
-main :: Effect Unit
-main = launchAff_ do
-  records :: Array MyCSVType1 <- CSV.Parse.parse myCSV
-  -- "ab,bar,baz\n3,\"hello, world!\",true\n6,,false"
-  csvString <- CSV.Stringify.stringify (atob <$> records)
-  pure unit
-```
+[`Pipes`]: https://pursuit.purescript.org/packages/purescript-pipes/8.0.0
