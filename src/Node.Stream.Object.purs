@@ -2,7 +2,16 @@ module Node.Stream.Object where
 
 import Prelude
 
+import Control.Monad.Error.Class (liftEither)
+import Control.Monad.ST.Class (liftST)
+import Control.Monad.ST.Global (Global)
+import Control.Monad.ST.Ref (STRef)
+import Control.Monad.ST.Ref as STRef
+import Control.Parallel (parOneOf)
 import Data.Either (Either(..))
+import Data.Generic.Rep (class Generic)
+import Data.Maybe (Maybe(..))
+import Data.Show.Generic (genericShow)
 import Effect (Effect)
 import Effect.Aff (Aff, effectCanceler, makeAff)
 import Effect.Class (liftEffect)
@@ -19,11 +28,19 @@ data ReadResult a
   = ReadWouldBlock
   | ReadClosed
   | ReadJust a
+derive instance Generic (ReadResult a) _
+derive instance Functor ReadResult
+derive instance Eq a => Eq (ReadResult a)
+instance Show (ReadResult a) where
+  show = genericShow <<< map (const "..")
 
 data WriteResult
   = WriteWouldBlock
   | WriteClosed
   | WriteOk
+derive instance Generic WriteResult _
+derive instance Eq WriteResult
+instance Show WriteResult where show = genericShow
 
 type ReadResultFFI a = { closed :: ReadResult a, wouldBlock :: ReadResult a, just :: a -> ReadResult a }
 type WriteResultFFI = { closed :: WriteResult, wouldBlock :: WriteResult, ok :: WriteResult }
@@ -100,6 +117,12 @@ else instance (Write s a) => Write s a where
   write s a = write s a
   end s = end s
 
+withErrorST :: forall s. Stream s => s -> Effect {cancel :: Effect Unit, error :: STRef Global (Maybe Error)}
+withErrorST s = do
+  error <- liftST $ STRef.new Nothing
+  cancel <- flip (Event.once errorH) s \e -> void $ liftST $ STRef.write (Just e) error
+  pure {error, cancel}
+
 fromBufferReadable :: forall r. Stream.Readable r -> Readable Buffer
 fromBufferReadable = unsafeCoerce
 
@@ -123,34 +146,26 @@ awaitReadableOrClosed s = do
   closed <- liftEffect $ isClosed s
   ended <- liftEffect $ isReadableEnded s
   readable <- liftEffect $ isReadable s
-  when (not ended && not closed && not readable) $ makeAff \res -> do
-    cancelClose <- Event.once closeH (res $ Right unit) s
-    cancelError <- Event.once errorH (res <<< Left) s
-    cancelReadable <- flip (Event.once readableH) s do
-      cancelClose
-      cancelError
-      res $ Right unit
-    pure $ effectCanceler do
-      cancelReadable
-      cancelClose
-      cancelError
+  when (not ended && not closed && not readable)
+    $ liftEither =<< parOneOf [onceAff0 readableH s $> Right unit, onceAff0 closeH s $> Right unit, Left <$> onceAff1 errorH s]
 
 awaitWritableOrClosed :: forall s a. Write s a => s -> Aff Unit
 awaitWritableOrClosed s = do
   closed <- liftEffect $ isClosed s
   ended <- liftEffect $ isWritableEnded s
   writable <- liftEffect $ isWritable s
-  when (not closed && not ended && not writable) $ makeAff \res -> do
-    cancelClose <- Event.once closeH (res $ Right unit) s
-    cancelError <- Event.once errorH (res <<< Left) s
-    cancelDrain <- flip (Event.once drainH) s do
-      cancelClose
-      cancelError
-      res $ Right unit
-    pure $ effectCanceler do
-      cancelDrain
-      cancelClose
-      cancelError
+  when (not ended && not closed && not writable)
+    $ liftEither =<< parOneOf [onceAff0 drainH s $> Right unit, onceAff0 closeH s $> Right unit, Left <$> onceAff1 errorH s]
+
+onceAff0 :: forall e. EventHandle0 e -> e -> Aff Unit
+onceAff0 h emitter = makeAff \res -> do
+  cancel <- Event.once h (res $ Right unit) emitter
+  pure $ effectCanceler cancel
+
+onceAff1 :: forall e a. EventHandle1 e a -> e -> Aff a
+onceAff1 h emitter = makeAff \res -> do
+  cancel <- Event.once h (res <<< Right) emitter
+  pure $ effectCanceler cancel
 
 readableH :: forall s a. Read s a => EventHandle0 s
 readableH = EventHandle "readable" identity

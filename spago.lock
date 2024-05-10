@@ -4,19 +4,28 @@ workspace:
       path: ./
       dependencies:
         - aff: ">=7.1.0 <8.0.0"
-        - control: ">=6.0.0 <7.0.0"
+        - arrays
         - effect: ">=4.0.0 <5.0.0"
         - either: ">=6.1.0 <7.0.0"
         - exceptions: ">=6.0.0 <7.0.0"
+        - foldable-traversable
         - maybe: ">=6.0.0 <7.0.0"
+        - mmorph
         - newtype: ">=5.0.0 <6.0.0"
         - node-buffer: ">=9.0.0 <10.0.0"
         - node-event-emitter: ">=3.0.0 <4.0.0"
+        - node-fs
+        - node-path
         - node-streams: ">=9.0.0 <10.0.0"
+        - node-zlib
+        - parallel
         - pipes: ">=8.0.0 <9.0.0"
         - prelude: ">=6.0.1 <7.0.0"
-        - tailrec: ">=6.1.0 <7.0.0"
+        - st
+        - strings
+        - tailrec
         - transformers: ">=6.0.0 <7.0.0"
+        - tuples
         - unsafe-coerce: ">=6.0.0 <7.0.0"
       test_dependencies:
         - console
@@ -26,6 +35,7 @@ workspace:
         - quickcheck
         - simple-json
         - spec
+        - spec-quickcheck
       build_plan:
         - aff
         - ansi
@@ -87,6 +97,7 @@ workspace:
         - safe-coerce
         - simple-json
         - spec
+        - spec-quickcheck
         - st
         - strings
         - tailrec
@@ -791,6 +802,16 @@ packages:
       - tailrec
       - transformers
       - tuples
+  spec-quickcheck:
+    type: registry
+    version: 5.0.0
+    integrity: sha256-iE0iThqZCuDGe3pwg5RvqcL8E5cRQ4txDuloCclOsCs=
+    dependencies:
+      - aff
+      - prelude
+      - quickcheck
+      - random
+      - spec
   st:
     type: registry
     version: 6.2.0
