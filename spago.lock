@@ -25,7 +25,6 @@ workspace:
         - strings: ">=6.0.1 <7.0.0"
         - tailrec: ">=6.1.0 <7.0.0"
         - transformers: ">=6.0.0 <7.0.0"
-        - tuples: ">=7.0.0 <8.0.0"
         - unsafe-coerce: ">=6.0.0 <7.0.0"
       test_dependencies:
         - console
