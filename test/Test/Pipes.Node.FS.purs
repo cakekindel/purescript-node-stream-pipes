@@ -24,63 +24,63 @@ import Test.Spec.Assertions (fail, shouldEqual)
 
 spec :: Spec Unit
 spec = describe "Pipes.Node.FS" do
-    describe "read" do
-      around tmpFile $ it "fails if the file does not exist" \p -> do
-        flip catchError (const $ pure unit) do
-          Pipes.runEffect $ Pipes.Node.FS.read p >-> Pipes.drain
-          fail "should have thrown"
-      around tmpFile $ it "reads ok" \p -> do
-        liftEffect $ FS.writeTextFile UTF8 p "foo"
-        s <- fold <$> Pipes.toListM (Pipes.Node.FS.read p >-> unEOS >-> Pipes.Node.Buffer.toString UTF8)
-        s `shouldEqual` "foo"
-      around tmpFile $ it "fails if the file already exists" \p -> do
-        liftEffect $ FS.writeTextFile UTF8 "foo" p
-        flip catchError (const $ pure unit) do
-          Pipes.runEffect $ withEOS (yield "foo" >-> Pipes.Node.Buffer.fromString UTF8) >-> Pipes.Node.FS.create p
-          fail "should have thrown"
-    describe "create" do
-      around tmpFile $ it "creates the file when not exists" \p -> do
+  describe "read" do
+    around tmpFile $ it "fails if the file does not exist" \p -> do
+      flip catchError (const $ pure unit) do
+        Pipes.runEffect $ Pipes.Node.FS.read p >-> Pipes.drain
+        fail "should have thrown"
+    around tmpFile $ it "reads ok" \p -> do
+      liftEffect $ FS.writeTextFile UTF8 p "foo"
+      s <- fold <$> Pipes.toListM (Pipes.Node.FS.read p >-> unEOS >-> Pipes.Node.Buffer.toString UTF8)
+      s `shouldEqual` "foo"
+    around tmpFile $ it "fails if the file already exists" \p -> do
+      liftEffect $ FS.writeTextFile UTF8 "foo" p
+      flip catchError (const $ pure unit) do
         Pipes.runEffect $ withEOS (yield "foo" >-> Pipes.Node.Buffer.fromString UTF8) >-> Pipes.Node.FS.create p
-        contents <- liftEffect $ FS.readTextFile UTF8 p
-        contents `shouldEqual` "foo"
-      around tmpFile $ it "fails if the file already exists" \p -> do
-        liftEffect $ FS.writeTextFile UTF8 "foo" p
-        flip catchError (const $ pure unit) do
-          Pipes.runEffect $ withEOS (yield "foo" >-> Pipes.Node.Buffer.fromString UTF8) >-> Pipes.Node.FS.create p
-          fail "should have thrown"
-    describe "append" do
-      around tmpFile $ it "creates the file when not exists" \p -> do
-        Pipes.runEffect $ withEOS (yield "foo" >-> Pipes.Node.Buffer.fromString UTF8) >-> Pipes.Node.FS.append p
-        contents <- liftEffect $ FS.readTextFile UTF8 p
-        contents `shouldEqual` "foo"
-      around tmpFile $ it "appends" \p -> do
-        Pipes.runEffect $ withEOS (yield "foo" >-> Pipes.Node.Buffer.fromString UTF8) >-> Pipes.Node.FS.append p
-        Pipes.runEffect $ withEOS (yield "\n" >-> Pipes.Node.Buffer.fromString UTF8) >-> Pipes.Node.FS.append p
-        Pipes.runEffect $ withEOS (yield "bar" >-> Pipes.Node.Buffer.fromString UTF8) >-> Pipes.Node.FS.append p
-        contents <- liftEffect $ FS.readTextFile UTF8 p
-        contents `shouldEqual` "foo\nbar"
-    describe "truncate" do
-      around tmpFile $ it "creates the file when not exists" \p -> do
-        Pipes.runEffect $ withEOS (yield "foo" >-> Pipes.Node.Buffer.fromString UTF8) >-> Pipes.Node.FS.truncate p
-        contents <- liftEffect $ FS.readTextFile UTF8 p
-        contents `shouldEqual` "foo"
-      around tmpFile $ it "overwrites contents" \p -> do
-        Pipes.runEffect $ withEOS (yield "foo" >-> Pipes.Node.Buffer.fromString UTF8) >-> Pipes.Node.FS.truncate p
-        Pipes.runEffect $ withEOS (yield "bar" >-> Pipes.Node.Buffer.fromString UTF8) >-> Pipes.Node.FS.truncate p
-        contents <- liftEffect $ FS.readTextFile UTF8 p
-        contents `shouldEqual` "bar"
-    around tmpFiles $ it "json lines >-> parse >-> _.foo >-> write" \(a /\ b) -> do
-      let
-        exp = [{foo: "a"}, {foo: "bar"}, {foo: "123"}]
-      liftEffect $ FS.writeTextFile UTF8 a $ intercalate "\n" $ writeJSON <$> exp
-      Pipes.runEffect $
-        Pipes.Node.FS.read a
+        fail "should have thrown"
+  describe "create" do
+    around tmpFile $ it "creates the file when not exists" \p -> do
+      Pipes.runEffect $ withEOS (yield "foo" >-> Pipes.Node.Buffer.fromString UTF8) >-> Pipes.Node.FS.create p
+      contents <- liftEffect $ FS.readTextFile UTF8 p
+      contents `shouldEqual` "foo"
+    around tmpFile $ it "fails if the file already exists" \p -> do
+      liftEffect $ FS.writeTextFile UTF8 "foo" p
+      flip catchError (const $ pure unit) do
+        Pipes.runEffect $ withEOS (yield "foo" >-> Pipes.Node.Buffer.fromString UTF8) >-> Pipes.Node.FS.create p
+        fail "should have thrown"
+  describe "append" do
+    around tmpFile $ it "creates the file when not exists" \p -> do
+      Pipes.runEffect $ withEOS (yield "foo" >-> Pipes.Node.Buffer.fromString UTF8) >-> Pipes.Node.FS.append p
+      contents <- liftEffect $ FS.readTextFile UTF8 p
+      contents `shouldEqual` "foo"
+    around tmpFile $ it "appends" \p -> do
+      Pipes.runEffect $ withEOS (yield "foo" >-> Pipes.Node.Buffer.fromString UTF8) >-> Pipes.Node.FS.append p
+      Pipes.runEffect $ withEOS (yield "\n" >-> Pipes.Node.Buffer.fromString UTF8) >-> Pipes.Node.FS.append p
+      Pipes.runEffect $ withEOS (yield "bar" >-> Pipes.Node.Buffer.fromString UTF8) >-> Pipes.Node.FS.append p
+      contents <- liftEffect $ FS.readTextFile UTF8 p
+      contents `shouldEqual` "foo\nbar"
+  describe "truncate" do
+    around tmpFile $ it "creates the file when not exists" \p -> do
+      Pipes.runEffect $ withEOS (yield "foo" >-> Pipes.Node.Buffer.fromString UTF8) >-> Pipes.Node.FS.truncate p
+      contents <- liftEffect $ FS.readTextFile UTF8 p
+      contents `shouldEqual` "foo"
+    around tmpFile $ it "overwrites contents" \p -> do
+      Pipes.runEffect $ withEOS (yield "foo" >-> Pipes.Node.Buffer.fromString UTF8) >-> Pipes.Node.FS.truncate p
+      Pipes.runEffect $ withEOS (yield "bar" >-> Pipes.Node.Buffer.fromString UTF8) >-> Pipes.Node.FS.truncate p
+      contents <- liftEffect $ FS.readTextFile UTF8 p
+      contents `shouldEqual` "bar"
+  around tmpFiles $ it "json lines >-> parse >-> _.foo >-> write" \(a /\ b) -> do
+    let
+      exp = [ { foo: "a" }, { foo: "bar" }, { foo: "123" } ]
+    liftEffect $ FS.writeTextFile UTF8 a $ intercalate "\n" $ writeJSON <$> exp
+    Pipes.runEffect $
+      Pipes.Node.FS.read a
         >-> inEOS (Pipes.Node.Buffer.toString UTF8)
         >-> Pipes.String.split (wrap "\n")
-        >-> inEOS (jsonParse @{foo :: String})
+        >-> inEOS (jsonParse @{ foo :: String })
         >-> inEOS (Pipes.map _.foo)
         >-> Pipes.Util.intersperse "\n"
         >-> inEOS (Pipes.Node.Buffer.fromString UTF8)
         >-> Pipes.Node.FS.create b
-      act <- liftEffect $ FS.readTextFile UTF8 b
-      act `shouldEqual` "a\nbar\n123"
+    act <- liftEffect $ FS.readTextFile UTF8 b
+    act `shouldEqual` "a\nbar\n123"

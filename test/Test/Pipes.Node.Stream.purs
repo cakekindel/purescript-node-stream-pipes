@@ -96,7 +96,7 @@ spec =
               str :: String <- genAlphaString
               num :: Int <- arbitrary
               stuff :: Array String <- arbitrary
-              pure {str, num, stuff}
+              pure { str, num, stuff }
           objs <- liftEffect (randomSample' 1 obj)
           let
             exp = fold (writeJSON <$> objs)
@@ -108,14 +108,14 @@ spec =
     describe "Transform" do
       it "gzip" do
         let
-          json = yield $ writeJSON {foo: "bar"}
+          json = yield $ writeJSON { foo: "bar" }
           exp = "1f8b0800000000000003ab564acbcf57b2524a4a2c52aa0500eff52bfe0d000000"
         gzip <- S.fromTransform <$> O.fromBufferTransform <$> liftEffect (Zlib.toDuplex <$> Zlib.createGzip)
         outs :: List.List String <- Pipes.toListM (S.withEOS (json >-> Pipes.Buffer.fromString UTF8) >-> gzip >-> S.unEOS >-> Pipes.Buffer.toString Hex)
         fold outs `shouldEqual` exp
       around tmpFiles
         $ it "file >-> gzip >-> file >-> gunzip" \(a /\ b) -> do
-            liftEffect $ FS.writeTextFile UTF8 a $ writeJSON [1, 2, 3, 4]
+            liftEffect $ FS.writeTextFile UTF8 a $ writeJSON [ 1, 2, 3, 4 ]
             areader <- liftEffect $ reader a
             bwritestream /\ bwriter <- liftEffect $ writer b
             gzip <- S.fromTransform <$> O.fromBufferTransform <$> liftEffect (Zlib.toDuplex <$> Zlib.createGzip)
@@ -125,7 +125,7 @@ spec =
             gunzip <- S.fromTransform <$> O.fromBufferTransform <$> liftEffect (Zlib.toDuplex <$> Zlib.createGunzip)
             breader <- liftEffect $ reader b
             nums <- Pipes.toListM (breader >-> gunzip >-> S.unEOS >-> Pipes.Buffer.toString UTF8 >-> jsonParse @(Array Int) >-> Pipes.mapFoldable identity)
-            Array.fromFoldable nums `shouldEqual` [1, 2, 3, 4]
+            Array.fromFoldable nums `shouldEqual` [ 1, 2, 3, 4 ]
       around tmpFile $ it "file >-> discardTransform" \(p :: String) -> do
         liftEffect $ FS.writeTextFile UTF8 p "foo"
         r <- reader p
@@ -137,4 +137,4 @@ spec =
         r <- reader p
         chars' <- liftEffect charsTransform
         out :: List.List String <- Pipes.toListM $ r >-> S.inEOS (Pipes.Buffer.toString UTF8) >-> S.fromTransform chars' >-> S.unEOS
-        out `shouldEqual` List.fromFoldable ["f", "o", "o", " ", "b", "a", "r"]
+        out `shouldEqual` List.fromFoldable [ "f", "o", "o", " ", "b", "a", "r" ]

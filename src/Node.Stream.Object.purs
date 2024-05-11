@@ -28,6 +28,7 @@ data ReadResult a
   = ReadWouldBlock
   | ReadClosed
   | ReadJust a
+
 derive instance Generic (ReadResult a) _
 derive instance Functor ReadResult
 derive instance Eq a => Eq (ReadResult a)
@@ -38,9 +39,11 @@ data WriteResult
   = WriteWouldBlock
   | WriteClosed
   | WriteOk
+
 derive instance Generic WriteResult _
 derive instance Eq WriteResult
-instance Show WriteResult where show = genericShow
+instance Show WriteResult where
+  show = genericShow
 
 type ReadResultFFI a = { closed :: ReadResult a, wouldBlock :: ReadResult a, just :: a -> ReadResult a }
 type WriteResultFFI = { closed :: WriteResult, wouldBlock :: WriteResult, ok :: WriteResult }
@@ -59,10 +62,10 @@ foreign import isWritableEndedImpl :: forall s. s -> Effect Boolean
 foreign import isClosedImpl :: forall s. s -> Effect Boolean
 
 readResultFFI :: forall a. ReadResultFFI a
-readResultFFI = {closed: ReadClosed, wouldBlock: ReadWouldBlock, just: ReadJust}
+readResultFFI = { closed: ReadClosed, wouldBlock: ReadWouldBlock, just: ReadJust }
 
 writeResultFFI :: WriteResultFFI
-writeResultFFI = {closed: WriteClosed, wouldBlock: WriteWouldBlock, ok: WriteOk}
+writeResultFFI = { closed: WriteClosed, wouldBlock: WriteWouldBlock, ok: WriteOk }
 
 class Stream :: Type -> Constraint
 class Stream s where
@@ -117,11 +120,11 @@ else instance (Write s a) => Write s a where
   write s a = write s a
   end s = end s
 
-withErrorST :: forall s. Stream s => s -> Effect {cancel :: Effect Unit, error :: STRef Global (Maybe Error)}
+withErrorST :: forall s. Stream s => s -> Effect { cancel :: Effect Unit, error :: STRef Global (Maybe Error) }
 withErrorST s = do
   error <- liftST $ STRef.new Nothing
   cancel <- flip (Event.once errorH) s \e -> void $ liftST $ STRef.write (Just e) error
-  pure {error, cancel}
+  pure { error, cancel }
 
 fromBufferReadable :: forall r. Stream.Readable r -> Readable Buffer
 fromBufferReadable = unsafeCoerce
@@ -147,7 +150,7 @@ awaitReadableOrClosed s = do
   ended <- liftEffect $ isReadableEnded s
   readable <- liftEffect $ isReadable s
   when (not ended && not closed && not readable)
-    $ liftEither =<< parOneOf [onceAff0 readableH s $> Right unit, onceAff0 closeH s $> Right unit, Left <$> onceAff1 errorH s]
+    $ liftEither =<< parOneOf [ onceAff0 readableH s $> Right unit, onceAff0 closeH s $> Right unit, Left <$> onceAff1 errorH s ]
 
 awaitWritableOrClosed :: forall s a. Write s a => s -> Aff Unit
 awaitWritableOrClosed s = do
@@ -155,7 +158,7 @@ awaitWritableOrClosed s = do
   ended <- liftEffect $ isWritableEnded s
   writable <- liftEffect $ isWritable s
   when (not ended && not closed && not writable)
-    $ liftEither =<< parOneOf [onceAff0 drainH s $> Right unit, onceAff0 closeH s $> Right unit, Left <$> onceAff1 errorH s]
+    $ liftEither =<< parOneOf [ onceAff0 drainH s $> Right unit, onceAff0 closeH s $> Right unit, Left <$> onceAff1 errorH s ]
 
 onceAff0 :: forall e. EventHandle0 e -> e -> Aff Unit
 onceAff0 h emitter = makeAff \res -> do

@@ -27,6 +27,7 @@ import Test.Spec (Spec, describe, it)
 import Test.Spec.Assertions (fail, shouldEqual)
 
 data BufferJunk = BufferJunk Buffer
+
 instance Arbitrary BufferJunk where
   arbitrary = sized \s -> do
     ns <- vectorOf s (chooseInt 0 7)
@@ -36,6 +37,7 @@ instance Arbitrary BufferJunk where
       pure $ BufferJunk buf
 
 data BufferUTF8 = BufferUTF8 String Buffer
+
 instance Arbitrary BufferUTF8 where
   arbitrary = do
     s <- genAsciiString
@@ -43,27 +45,27 @@ instance Arbitrary BufferUTF8 where
 
 spec :: Spec Unit
 spec = describe "Pipes.Node.Buffer" do
-    describe "toString" do
-      it "fails when encoding wrong" do
-        vals <- Pipes.each <$> (map \(BufferJunk b) -> b) <$> liftEffect (randomSample' 10 arbitrary)
-        let
-          uut = Pipes.runEffect $ vals >-> Pipes.Node.Buffer.toString UTF8 >-> Pipes.drain
-          ok = do
-            uut
-            fail "Should have thrown"
-          err _ = pure unit
-        catchError ok err
-      it "junk OK in hex" do
-        vals <- Pipes.each <$> (map \(BufferJunk b) -> b) <$> liftEffect (randomSample' 10 arbitrary)
-        Pipes.runEffect $ vals >-> Pipes.Node.Buffer.toString Hex >-> Pipes.drain
-      it "UTF8 ok" do
-        vals <- (map \(BufferUTF8 s b) -> s /\ b) <$> liftEffect (randomSample' 100 arbitrary)
-        let
-          bufs = Pipes.each $ snd <$> vals
-          strs = fst <$> vals
-        act <- Array.fromFoldable <$> Pipes.toListM (bufs >-> Pipes.Node.Buffer.toString UTF8)
-        act `shouldEqual` strs
-    describe "fromString" do
-      it "ok" do
-        vals <- Pipes.each <$> liftEffect (randomSample' 100 genAsciiString)
-        Pipes.runEffect $ vals >-> Pipes.Node.Buffer.fromString UTF8 >-> Pipes.drain
+  describe "toString" do
+    it "fails when encoding wrong" do
+      vals <- Pipes.each <$> (map \(BufferJunk b) -> b) <$> liftEffect (randomSample' 10 arbitrary)
+      let
+        uut = Pipes.runEffect $ vals >-> Pipes.Node.Buffer.toString UTF8 >-> Pipes.drain
+        ok = do
+          uut
+          fail "Should have thrown"
+        err _ = pure unit
+      catchError ok err
+    it "junk OK in hex" do
+      vals <- Pipes.each <$> (map \(BufferJunk b) -> b) <$> liftEffect (randomSample' 10 arbitrary)
+      Pipes.runEffect $ vals >-> Pipes.Node.Buffer.toString Hex >-> Pipes.drain
+    it "UTF8 ok" do
+      vals <- (map \(BufferUTF8 s b) -> s /\ b) <$> liftEffect (randomSample' 100 arbitrary)
+      let
+        bufs = Pipes.each $ snd <$> vals
+        strs = fst <$> vals
+      act <- Array.fromFoldable <$> Pipes.toListM (bufs >-> Pipes.Node.Buffer.toString UTF8)
+      act `shouldEqual` strs
+  describe "fromString" do
+    it "ok" do
+      vals <- Pipes.each <$> liftEffect (randomSample' 100 genAsciiString)
+      Pipes.runEffect $ vals >-> Pipes.Node.Buffer.fromString UTF8 >-> Pipes.drain

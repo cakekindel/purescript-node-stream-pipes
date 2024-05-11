@@ -30,19 +30,20 @@ fromReadable r =
       liftEffect rmErrorListener
       pure $ Done unit
 
-    go {error, cancel} = do
+    go { error, cancel } = do
       liftAff $ delay $ wrap 0.0
       err <- liftEffect $ liftST $ STRef.read error
       for_ err throwError
 
       res <- liftEffect $ O.read r
       case res of
-        O.ReadJust a -> yield (Just a) $> Loop {error, cancel}
-        O.ReadWouldBlock -> lift (O.awaitReadableOrClosed r) $> Loop {error, cancel}
+        O.ReadJust a -> yield (Just a) $> Loop { error, cancel }
+        O.ReadWouldBlock -> lift (O.awaitReadableOrClosed r) $> Loop { error, cancel }
         O.ReadClosed -> yield Nothing *> cleanup cancel
-  in do
-    e <- liftEffect $ O.withErrorST r
-    tailRecM go e
+  in
+    do
+      e <- liftEffect $ O.withErrorST r
+      tailRecM go e
 
 -- | Convert a `Writable` stream to a `Pipe`.
 -- |
@@ -56,7 +57,7 @@ fromWritable w =
       liftEffect $ O.end w
       pure $ Done unit
 
-    go {error, cancel} = do
+    go { error, cancel } = do
       liftAff $ delay $ wrap 0.0
       err <- liftEffect $ liftST $ STRef.read error
       for_ err throwError
@@ -67,14 +68,15 @@ fromWritable w =
         Just a -> do
           res <- liftEffect $ O.write w a
           case res of
-            O.WriteOk -> pure $ Loop {error, cancel}
+            O.WriteOk -> pure $ Loop { error, cancel }
             O.WriteWouldBlock -> do
               liftAff (O.awaitWritableOrClosed w)
-              pure $ Loop {error, cancel}
+              pure $ Loop { error, cancel }
             O.WriteClosed -> cleanup cancel
-  in do
-    r <- liftEffect $ O.withErrorST w
-    tailRecM go r
+  in
+    do
+      r <- liftEffect $ O.withErrorST w
+      tailRecM go r
 
 -- | Convert a `Transform` stream to a `Pipe`.
 -- |
@@ -94,7 +96,7 @@ fromTransform t =
         O.ReadJust a -> yield (Just a)
         O.ReadWouldBlock -> pure unit
         O.ReadClosed -> yield Nothing *> pure unit
-    go {error, cancel} = do
+    go { error, cancel } = do
       liftAff $ delay $ wrap 0.0
       err <- liftEffect $ liftST $ STRef.read error
       for_ err throwError
@@ -107,13 +109,14 @@ fromTransform t =
           yieldFromReadableHalf
           case res of
             O.WriteClosed -> cleanup cancel
-            O.WriteOk -> pure $ Loop {error, cancel}
+            O.WriteOk -> pure $ Loop { error, cancel }
             O.WriteWouldBlock -> do
               lift (O.awaitWritableOrClosed t)
-              pure $ Loop {error, cancel}
-  in do
-    r <- liftEffect $ O.withErrorST t
-    tailRecM go r
+              pure $ Loop { error, cancel }
+  in
+    do
+      r <- liftEffect $ O.withErrorST t
+      tailRecM go r
 
 -- | Given a `Producer` of values, wrap them in `Just`.
 -- |

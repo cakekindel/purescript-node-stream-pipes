@@ -23,8 +23,10 @@ import Prim.Row (class Union)
 -- | into `Producer (Maybe a)`, emitting `Nothing` before exiting.
 write
   :: forall r trash
-  . Union r trash WriteStreamOptions
-  => Record r -> FilePath -> Consumer (Maybe Buffer) Aff Unit
+   . Union r trash WriteStreamOptions
+  => Record r
+  -> FilePath
+  -> Consumer (Maybe Buffer) Aff Unit
 write o p = do
   w <- liftEffect $ FS.Stream.createWriteStream' p o
   fromWritable $ O.fromBufferWritable w
@@ -33,19 +35,19 @@ write o p = do
 -- |
 -- | `write {flags: "wx"}`
 create :: FilePath -> Consumer (Maybe Buffer) Aff Unit
-create = write {flags: "wx"}
+create = write { flags: "wx" }
 
 -- | Open a file in write mode, truncating it if the file already exists.
 -- |
 -- | `write {flags: "w"}`
 truncate :: FilePath -> Consumer (Maybe Buffer) Aff Unit
-truncate = write {flags: "w"}
+truncate = write { flags: "w" }
 
 -- | Open a file in write mode, appending written contents if the file already exists.
 -- |
 -- | `write {flags: "a"}`
 append :: FilePath -> Consumer (Maybe Buffer) Aff Unit
-append = write {flags: "a"}
+append = write { flags: "a" }
 
 -- | Creates a `fs.Readable` stream for the file at the given path.
 -- |

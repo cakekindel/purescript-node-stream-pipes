@@ -33,7 +33,7 @@ split pat = do
       Nothing -> void $ liftEffect $ liftST $ Array.ST.push chunk buf
       Just ix -> do
         let
-          {before, after} = String.splitAt ix chunk
+          { before, after } = String.splitAt ix chunk
         len <- liftEffect $ liftST $ Array.ST.length buf
         buf' <- liftEffect $ liftST $ Array.ST.splice 0 len [] buf
         lift $ yield $ Just $ (fold buf') <> before
