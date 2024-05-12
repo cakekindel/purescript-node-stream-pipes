@@ -3,21 +3,23 @@ module Pipes.Node.Stream where
 import Prelude
 
 import Control.Monad.Error.Class (throwError)
-import Control.Monad.Rec.Class (Step(..), tailRecM, whileJust)
+import Control.Monad.Rec.Class (class MonadRec, Step(..), tailRecM)
 import Control.Monad.ST.Class (liftST)
 import Control.Monad.ST.Ref as STRef
 import Control.Monad.Trans.Class (lift)
-import Data.Maybe (Maybe(..), maybe)
+import Data.Maybe (Maybe(..))
 import Data.Newtype (wrap)
 import Data.Traversable (for_)
+import Data.Tuple.Nested ((/\))
 import Effect.Aff (Aff, delay)
 import Effect.Aff.Class (liftAff)
 import Effect.Class (liftEffect)
 import Node.Stream.Object as O
-import Pipes (await, yield, (>->))
+import Pipes (await, yield)
 import Pipes (for) as P
 import Pipes.Core (Consumer, Pipe, Producer, Producer_)
-import Pipes.Prelude (mapFoldable, map) as P
+import Pipes.Prelude (mapFoldable) as P
+import Pipes.Util (InvokeResult(..), invoke)
 
 -- | Convert a `Readable` stream to a `Pipe`.
 -- |
@@ -140,8 +142,16 @@ unEOS = P.mapFoldable identity
 -- | `Just` values will be passed to the pipe, and the response(s) will be wrapped in `Just`.
 -- |
 -- | `Nothing` will bypass the given pipe entirely, and the pipe will not be invoked again.
-inEOS :: forall a b. Pipe a b Aff Unit -> Pipe (Maybe a) (Maybe b) Aff Unit
-inEOS p = whileJust do
+inEOS :: forall a b m. MonadRec m => Pipe a b m Unit -> Pipe (Maybe a) (Maybe b) m Unit
+inEOS p = flip tailRecM p \p' -> do
   ma <- await
-  maybe (yield Nothing) (\a -> yield a >-> p >-> P.map Just) ma
-  pure $ void ma
+  case ma of
+    Just a -> do
+      res <- lift $ invoke p' a
+      case res of
+        Yielded (as /\ p'') -> do
+          for_ (Just <$> as) yield
+          pure $ Loop p''
+        DidNotYield p'' -> pure $ Loop p''
+        Exited -> yield Nothing $> Done unit
+    _ -> yield Nothing $> Done unit
