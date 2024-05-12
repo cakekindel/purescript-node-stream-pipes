@@ -2,7 +2,7 @@ module Pipes.Node.Stream where
 
 import Prelude
 
-import Control.Monad.Error.Class (throwError)
+import Control.Monad.Error.Class (class MonadThrow, throwError)
 import Control.Monad.Rec.Class (class MonadRec, Step(..), tailRecM)
 import Control.Monad.ST.Class (liftST)
 import Control.Monad.ST.Ref as STRef
@@ -11,9 +11,10 @@ import Data.Maybe (Maybe(..))
 import Data.Newtype (wrap)
 import Data.Traversable (for_)
 import Data.Tuple.Nested ((/\))
-import Effect.Aff (Aff, delay)
-import Effect.Aff.Class (liftAff)
+import Effect.Aff (delay)
+import Effect.Aff.Class (class MonadAff, liftAff)
 import Effect.Class (liftEffect)
+import Effect.Exception (Error)
 import Node.Stream.Object as O
 import Pipes (await, yield)
 import Pipes (for) as P
@@ -25,7 +26,7 @@ import Pipes.Util (InvokeResult(..), invoke)
 -- |
 -- | This will yield `Nothing` before exiting, signaling
 -- | End-of-stream.
-fromReadable :: forall s a. O.Read s a => s -> Producer_ (Maybe a) Aff Unit
+fromReadable :: forall s a m. MonadThrow Error m => MonadAff m => O.Read s a => s -> Producer_ (Maybe a) m Unit
 fromReadable r =
   let
     cleanup rmErrorListener = do
@@ -40,7 +41,7 @@ fromReadable r =
       res <- liftEffect $ O.read r
       case res of
         O.ReadJust a -> yield (Just a) $> Loop { error, cancel }
-        O.ReadWouldBlock -> lift (O.awaitReadableOrClosed r) $> Loop { error, cancel }
+        O.ReadWouldBlock -> liftAff (O.awaitReadableOrClosed r) $> Loop { error, cancel }
         O.ReadClosed -> yield Nothing *> cleanup cancel
   in
     do
@@ -51,7 +52,7 @@ fromReadable r =
 -- |
 -- | When `Nothing` is piped to this, the stream will
 -- | be `end`ed, and the pipe will noop if invoked again.
-fromWritable :: forall s a. O.Write s a => s -> Consumer (Maybe a) Aff Unit
+fromWritable :: forall s a m. MonadThrow Error m => MonadAff m => O.Write s a => s -> Consumer (Maybe a) m Unit
 fromWritable w =
   let
     cleanup rmErrorListener = do
@@ -84,7 +85,7 @@ fromWritable w =
 -- |
 -- | When `Nothing` is piped to this, the `Transform` stream will
 -- | be `end`ed, and the pipe will noop if invoked again.
-fromTransform :: forall a b. O.Transform a b -> Pipe (Maybe a) (Maybe b) Aff Unit
+fromTransform :: forall a b m. MonadThrow Error m => MonadAff m => O.Transform a b -> Pipe (Maybe a) (Maybe b) m Unit
 fromTransform t =
   let
     cleanup removeErrorListener = do
@@ -113,7 +114,7 @@ fromTransform t =
             O.WriteClosed -> cleanup cancel
             O.WriteOk -> pure $ Loop { error, cancel }
             O.WriteWouldBlock -> do
-              lift (O.awaitWritableOrClosed t)
+              liftAff $ O.awaitWritableOrClosed t
               pure $ Loop { error, cancel }
   in
     do
@@ -123,13 +124,13 @@ fromTransform t =
 -- | Given a `Producer` of values, wrap them in `Just`.
 -- |
 -- | Before the `Producer` exits, emits `Nothing` as an End-of-stream signal.
-withEOS :: forall a. Producer a Aff Unit -> Producer (Maybe a) Aff Unit
+withEOS :: forall a m. Monad m => Producer a m Unit -> Producer (Maybe a) m Unit
 withEOS a = do
   P.for a (yield <<< Just)
   yield Nothing
 
 -- | Strip a pipeline of the EOS signal
-unEOS :: forall a. Pipe (Maybe a) a Aff Unit
+unEOS :: forall a m. Monad m => Pipe (Maybe a) a m Unit
 unEOS = P.mapFoldable identity
 
 -- | Lift a `Pipe a a` to `Pipe (Maybe a) (Maybe a)`.
