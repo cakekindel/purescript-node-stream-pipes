@@ -97,7 +97,7 @@ fromTransform t =
     yieldFromReadableHalf = do
       res <- liftEffect (O.read t)
       case res of
-        O.ReadJust a -> yield (Just a)
+        O.ReadJust a -> yield (Just a) *> yieldFromReadableHalf
         O.ReadWouldBlock -> pure unit
         O.ReadClosed -> yield Nothing *> pure unit
     go { error, cancel } = do
