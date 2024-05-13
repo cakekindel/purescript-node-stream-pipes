@@ -85,9 +85,10 @@ chunked size = do
   Rec.whileJust $ runMaybeT do
     a <- MaybeT await
     chunkPut a
-    len <- chunkLength
+    len <- lift chunkLength
     when (len >= size) $ lift $ yield =<< Just <$> chunkTake
-  yield =<< Just <$> chunkTake
+  len <- chunkLength
+  when (len > 0) $ yield =<< Just <$> chunkTake
   yield Nothing
 
 -- | Equivalent of unix `uniq`, filtering out duplicate values passed to it.

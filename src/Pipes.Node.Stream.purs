@@ -96,6 +96,7 @@ fromTransform t =
       pure $ Done unit
     yieldFromReadableHalf =
       flip tailRecM unit $ const do
+        liftAff $ delay $ wrap 0.0
         res <- liftEffect (O.read t)
         case res of
           O.ReadJust a -> do
