@@ -94,17 +94,21 @@ fromTransform t =
       liftEffect $ removeErrorListener
       fromReadable t
       pure $ Done unit
-    yieldFromReadableHalf = do
-      res <- liftEffect (O.read t)
-      case res of
-        O.ReadJust a -> yield (Just a) *> yieldFromReadableHalf
-        O.ReadWouldBlock -> pure unit
-        O.ReadClosed -> yield Nothing *> pure unit
+    yieldFromReadableHalf =
+      flip tailRecM unit $ const do
+        res <- liftEffect (O.read t)
+        case res of
+          O.ReadJust a -> do
+            yield $ Just a
+            pure $ Loop unit
+          O.ReadWouldBlock -> pure $ Done unit
+          O.ReadClosed -> yield Nothing $> Done unit
     go { error, cancel } = do
       liftAff $ delay $ wrap 0.0
       err <- liftEffect $ liftST $ STRef.read error
       for_ err throwError
 
+      yieldFromReadableHalf
       ma <- await
       case ma of
         Nothing -> cleanup cancel
