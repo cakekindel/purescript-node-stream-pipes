@@ -8,7 +8,7 @@ import Effect.Aff.Class (class MonadAff)
 import Effect.Class (liftEffect)
 import Effect.Exception (Error)
 import Node.Buffer (Buffer)
-import Node.FS.Stream (WriteStreamOptions)
+import Node.FS.Stream (WriteStreamOptions, ReadStreamOptions)
 import Node.FS.Stream as FS.Stream
 import Node.Path (FilePath)
 import Node.Stream.Object as O
@@ -60,4 +60,20 @@ append = write { flags: "a" }
 read :: forall m. MonadAff m => MonadThrow Error m => FilePath -> Producer (Maybe Buffer) m Unit
 read p = do
   r <- liftEffect $ FS.Stream.createReadStream p
+  fromReadable $ O.fromBufferReadable r
+
+-- | Creates a `fs.Readable` stream for the file at the given path.
+-- |
+-- | Emits `Nothing` before closing. To opt out of this behavior,
+-- | use `Pipes.Node.Stream.withoutEOS` or `Pipes.Node.Stream.unEOS`.
+read'
+  :: forall r trash m
+   . Union r trash ReadStreamOptions
+  => MonadAff m
+  => MonadThrow Error m
+  => Record r
+  -> FilePath
+  -> Producer (Maybe Buffer) m Unit
+read' opts p = do
+  r <- liftEffect $ FS.Stream.createReadStream' p opts
   fromReadable $ O.fromBufferReadable r
