@@ -34,7 +34,7 @@ spec = describe "Pipes.Node.FS" do
       s <- fold <$> Pipes.toListM (Pipes.Node.FS.read p >-> unEOS >-> Pipes.Node.Buffer.toString UTF8)
       s `shouldEqual` "foo"
     around tmpFile $ it "fails if the file already exists" \p -> do
-      liftEffect $ FS.writeTextFile UTF8 "foo" p
+      liftEffect $ FS.writeTextFile UTF8 p "foo"
       flip catchError (const $ pure unit) do
         Pipes.runEffect $ withEOS (yield "foo" >-> Pipes.Node.Buffer.fromString UTF8) >-> Pipes.Node.FS.create p
         fail "should have thrown"
@@ -44,7 +44,7 @@ spec = describe "Pipes.Node.FS" do
       contents <- liftEffect $ FS.readTextFile UTF8 p
       contents `shouldEqual` "foo"
     around tmpFile $ it "fails if the file already exists" \p -> do
-      liftEffect $ FS.writeTextFile UTF8 "foo" p
+      liftEffect $ FS.writeTextFile UTF8 p "foo"
       flip catchError (const $ pure unit) do
         Pipes.runEffect $ withEOS (yield "foo" >-> Pipes.Node.Buffer.fromString UTF8) >-> Pipes.Node.FS.create p
         fail "should have thrown"

@@ -58,6 +58,7 @@ fromWritable w =
     cleanup rmErrorListener = do
       liftEffect rmErrorListener
       liftEffect $ O.end w
+      liftAff $ O.awaitFinished w
       pure $ Done unit
 
     go { error, cancel } = do

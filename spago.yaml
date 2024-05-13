@@ -40,6 +40,8 @@ package:
     - unsafe-coerce: ">=6.0.0 <7.0.0"
   test:
     main: Test.Main
+    build:
+      strict: true
     dependencies:
       - console
       - gen

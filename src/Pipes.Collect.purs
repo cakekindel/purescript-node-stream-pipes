@@ -2,12 +2,9 @@ module Pipes.Collect where
 
 import Prelude
 
-import Control.Monad.Maybe.Trans (MaybeT(..), runMaybeT)
 import Control.Monad.Rec.Class (class MonadRec, Step(..), tailRecM)
 import Control.Monad.ST.Class (liftST)
-import Control.Monad.Trans.Class (lift)
 import Data.Array.ST as Array.ST
-import Data.Either (hush)
 import Data.HashMap (HashMap)
 import Data.HashMap as HashMap
 import Data.Hashable (class Hashable)
@@ -15,45 +12,37 @@ import Data.List (List)
 import Data.List as List
 import Data.Map (Map)
 import Data.Map as Map
-import Data.Maybe (fromMaybe)
 import Data.Tuple.Nested (type (/\), (/\))
 import Effect.Class (class MonadEffect, liftEffect)
 import Foreign.Object (Object)
 import Foreign.Object.ST as Object.ST
 import Foreign.Object.ST.Unsafe as Object.ST.Unsafe
-import Pipes (next) as Pipes
 import Pipes.Core (Producer)
-
--- | Fold every value produced
--- |
--- | Uses `MonadRec`, supporting producers of arbitrary length.
-fold :: forall a b m. MonadRec m => (b -> a -> b) -> b -> Producer a m Unit -> m b
-fold f b p =
-  let
-    insertNext b' p' = runMaybeT do
-      a /\ p'' <- MaybeT $ hush <$> Pipes.next p'
-      pure $ Loop $ f b' a /\ p''
-  in
-    flip tailRecM (b /\ p) \(b' /\ p') -> fromMaybe (Done b') <$> insertNext b' p'
+import Pipes.Internal (Proxy(..))
 
 -- | Fold every value produced with a monadic action
 -- |
 -- | Uses `MonadRec`, supporting producers of arbitrary length.
 traverse :: forall a b m. MonadRec m => (b -> a -> m b) -> b -> Producer a m Unit -> m b
-traverse f b p =
-  let
-    insertNext b' p' = runMaybeT do
-      a /\ p'' <- MaybeT $ hush <$> Pipes.next p'
-      b'' <- lift $ f b' a
-      pure $ Loop $ b'' /\ p''
-  in
-    flip tailRecM (b /\ p) \(b' /\ p') -> fromMaybe (Done b') <$> insertNext b' p'
+traverse f b0 p0 =
+  flip tailRecM (p0 /\ b0) \(p /\ b) ->
+    case p of
+      Respond a m -> Loop <$> (m unit /\ _) <$> f b a
+      M m -> Loop <$> (_ /\ b) <$> m
+      Request _ _ -> pure $ Done b
+      Pure _ -> pure $ Done b
+
+-- | Fold every value produced
+-- |
+-- | Uses `MonadRec`, supporting producers of arbitrary length.
+fold :: forall a b m. MonadRec m => (b -> a -> b) -> b -> Producer a m Unit -> m b
+fold f b0 p0 = traverse (\b a -> pure $ f b a) b0 p0
 
 -- | Execute a monadic action on every item in a producer.
 -- |
 -- | Uses `MonadRec`, supporting producers of arbitrary length.
 foreach :: forall a m. MonadRec m => (a -> m Unit) -> Producer a m Unit -> m Unit
-foreach f = traverse (const f) unit
+foreach f p0 = traverse (\_ a -> f a) unit p0
 
 -- | Collect all values from a `Producer` into an array.
 toArray :: forall a m. MonadRec m => MonadEffect m => Producer a m Unit -> m (Array a)

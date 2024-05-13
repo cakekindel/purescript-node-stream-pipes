@@ -152,6 +152,9 @@ awaitReadableOrClosed s = do
   when (not ended && not closed && not readable)
     $ liftEither =<< parOneOf [ onceAff0 readableH s $> Right unit, onceAff0 closeH s $> Right unit, Left <$> onceAff1 errorH s ]
 
+awaitFinished :: forall s a. Write s a => s -> Aff Unit
+awaitFinished s = onceAff0 finishH s
+
 awaitWritableOrClosed :: forall s a. Write s a => s -> Aff Unit
 awaitWritableOrClosed s = do
   closed <- liftEffect $ isClosed s
@@ -184,3 +187,6 @@ errorH = EventHandle "error" mkEffectFn1
 
 endH :: forall s a. Write s a => EventHandle0 s
 endH = EventHandle "end" identity
+
+finishH :: forall s a. Write s a => EventHandle0 s
+finishH = EventHandle "finish" identity

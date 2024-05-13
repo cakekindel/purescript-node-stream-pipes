@@ -3,22 +3,34 @@ module Pipes.Util where
 import Prelude
 
 import Control.Monad.Maybe.Trans (MaybeT(..), runMaybeT)
-import Control.Monad.Rec.Class (class MonadRec, forever, whileJust)
+import Control.Monad.Rec.Class (class MonadRec, Step(..), forever, tailRecM)
+import Control.Monad.Rec.Class as Rec
 import Control.Monad.ST.Class (liftST)
 import Control.Monad.ST.Ref (STRef)
 import Control.Monad.ST.Ref as STRef
 import Control.Monad.Trans.Class (lift)
 import Data.Array.ST (STArray)
 import Data.Array.ST as Array.ST
+import Data.Either (hush)
 import Data.HashSet as HashSet
 import Data.Hashable (class Hashable, hash)
 import Data.List.NonEmpty (NonEmptyList)
-import Data.Maybe (Maybe(..))
+import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Tuple.Nested (type (/\), (/\))
 import Effect.Class (class MonadEffect, liftEffect)
 import Pipes (await, yield)
-import Pipes.Core (Pipe)
+import Pipes as Pipes
+import Pipes.Core (Pipe, Producer)
 import Pipes.Internal (Proxy(..))
+
+-- | Re-yield all `Just`s, and close when `Nothing` is encountered
+whileJust :: forall m a. MonadRec m => Pipe (Maybe a) a m Unit
+whileJust = do
+  first <- await
+  flip tailRecM first $ \ma -> fromMaybe (Done unit) <$> runMaybeT do
+    a <- MaybeT $ pure ma
+    lift $ yield a
+    lift $ Loop <$> await
 
 -- | Yields a separator value `sep` between received values
 -- |
@@ -33,13 +45,23 @@ intersperse sep = do
     getIsFirst = liftEffect $ liftST $ STRef.read isFirstST
     markNotFirst = void $ liftEffect $ liftST $ STRef.write false isFirstST
 
-  whileJust $ runMaybeT do
+  Rec.whileJust $ runMaybeT do
     a <- MaybeT await
     isFirst <- getIsFirst
     if isFirst then markNotFirst else lift $ yield $ Just sep
     lift $ yield $ Just a
 
   yield Nothing
+
+-- Pair every emitted value from 2 producers together, exiting when either exits.
+zip :: forall a b m. MonadRec m => Producer a m Unit -> Producer b m Unit -> Producer (a /\ b) m Unit
+zip as bs =
+  flip tailRecM (as /\ bs) \(as' /\ bs') ->
+    fromMaybe (Done unit) <$> runMaybeT do
+      a /\ as'' <- MaybeT $ lift $ hush <$> Pipes.next as'
+      b /\ bs'' <- MaybeT $ lift $ hush <$> Pipes.next bs'
+      lift $ yield $ a /\ b
+      pure $ Loop $ as'' /\ bs''
 
 -- | Accumulate values in chunks of a given size.
 -- |
@@ -60,7 +82,7 @@ chunked size = do
       void $ flip STRef.write chunkST =<< Array.ST.new
       Array.ST.unsafeFreeze chunkArray
 
-  whileJust $ runMaybeT do
+  Rec.whileJust $ runMaybeT do
     a <- MaybeT await
     chunkPut a
     len <- chunkLength
