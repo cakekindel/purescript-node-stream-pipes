@@ -30,7 +30,7 @@ export const writeImpl =
   (s) =>
   (a) =>
   () => {
-    if (s.closed || s.writableEnded) {
+    if (s.writableEnded) {
       return closed;
     }
 
@@ -46,7 +46,7 @@ export const readImpl =
   ({ just, closed, wouldBlock }) =>
   (s) =>
   () => {
-    if (s.closed || s.readableEnded) {
+    if (s.readableEnded) {
       return closed;
     }
 
