@@ -24,16 +24,12 @@ export const isWritableEndedImpl = (s) => () => s.writableEnded;
 /** @type {(s: Stream.Writable | Stream.Transform) => () => void} */
 export const endImpl = (s) => () => s.end();
 
-/** @type {<WriteResult>(o: {ok: WriteResult, wouldBlock: WriteResult, closed: WriteResult}) => (s: Stream.Writable | Stream.Transform) => (a: unknown) => () => WriteResult} */
+/** @type {<WriteResult>(o: {ok: WriteResult, wouldBlock: WriteResult}) => (s: Stream.Writable | Stream.Transform) => (a: unknown) => () => WriteResult} */
 export const writeImpl =
-  ({ ok, wouldBlock, closed }) =>
+  ({ ok, wouldBlock }) =>
   (s) =>
   (a) =>
   () => {
-    if (s.writableEnded) {
-      return closed;
-    }
-
     if (s.write(a)) {
       return ok;
     } else {
@@ -41,15 +37,11 @@ export const writeImpl =
     }
   };
 
-/** @type {<ReadResult>(o: {just: (_a: unknown) => ReadResult, wouldBlock: ReadResult, closed: ReadResult}) => (s: Stream.Readable | Stream.Transform) => () => ReadResult} */
+/** @type {<ReadResult>(o: {just: (_a: unknown) => ReadResult, wouldBlock: ReadResult}) => (s: Stream.Readable | Stream.Transform) => () => ReadResult} */
 export const readImpl =
-  ({ just, closed, wouldBlock }) =>
+  ({ just, wouldBlock }) =>
   (s) =>
   () => {
-    if (s.readableEnded) {
-      return closed;
-    }
-
     const a = s.read();
     if (a === null) {
       return wouldBlock;

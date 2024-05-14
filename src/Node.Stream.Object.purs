@@ -26,7 +26,6 @@ import Unsafe.Coerce (unsafeCoerce)
 
 data ReadResult a
   = ReadWouldBlock
-  | ReadClosed
   | ReadJust a
 
 derive instance Generic (ReadResult a) _
@@ -37,7 +36,6 @@ instance Show (ReadResult a) where
 
 data WriteResult
   = WriteWouldBlock
-  | WriteClosed
   | WriteOk
 
 derive instance Generic WriteResult _
@@ -45,8 +43,8 @@ derive instance Eq WriteResult
 instance Show WriteResult where
   show = genericShow
 
-type ReadResultFFI a = { closed :: ReadResult a, wouldBlock :: ReadResult a, just :: a -> ReadResult a }
-type WriteResultFFI = { closed :: WriteResult, wouldBlock :: WriteResult, ok :: WriteResult }
+type ReadResultFFI a = { wouldBlock :: ReadResult a, just :: a -> ReadResult a }
+type WriteResultFFI = { wouldBlock :: WriteResult, ok :: WriteResult }
 
 foreign import data Writable :: Type -> Type
 foreign import data Readable :: Type -> Type
@@ -64,10 +62,10 @@ foreign import needsDrainImpl :: forall s. s -> Effect Boolean
 foreign import readableLengthImpl :: forall s. s -> Effect Int
 
 readResultFFI :: forall a. ReadResultFFI a
-readResultFFI = { closed: ReadClosed, wouldBlock: ReadWouldBlock, just: ReadJust }
+readResultFFI = { wouldBlock: ReadWouldBlock, just: ReadJust }
 
 writeResultFFI :: WriteResultFFI
-writeResultFFI = { closed: WriteClosed, wouldBlock: WriteWouldBlock, ok: WriteOk }
+writeResultFFI = { wouldBlock: WriteWouldBlock, ok: WriteOk }
 
 class Stream :: Type -> Constraint
 class Stream s where

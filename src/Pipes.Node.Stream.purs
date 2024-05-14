@@ -40,8 +40,13 @@ fromReadable r =
       res <- liftEffect $ O.read r
       case res of
         O.ReadJust a -> yield (Just a) $> Loop { error, cancel }
-        O.ReadWouldBlock -> liftAff (O.awaitReadableOrClosed r) $> Loop { error, cancel }
-        O.ReadClosed -> yield Nothing *> cleanup cancel
+        O.ReadWouldBlock -> do
+          ended <- liftEffect $ O.isReadableEnded r
+          if ended then do
+            yield Nothing
+            cleanup cancel
+          else
+            liftAff (O.awaitReadableOrClosed r) $> Loop { error, cancel }
   in
     do
       e <- liftEffect $ O.withErrorST r
@@ -66,14 +71,16 @@ fromWritable w =
 
       needsDrain <- liftEffect $ O.needsDrain w
       when needsDrain $ liftAff $ O.awaitWritableOrClosed w
-      ma <- await
-      case ma of
-        Nothing -> cleanup cancel
-        Just a -> do
-          res <- liftEffect $ O.write w a
-          case res of
-            O.WriteClosed -> cleanup cancel
-            _ -> pure $ Loop { error, cancel }
+
+      ended <- liftEffect $ O.isWritableEnded w
+      if ended then
+        cleanup cancel
+      else
+        await >>= case _ of
+          Nothing -> cleanup cancel
+          Just a -> do
+            void $ liftEffect $ O.write w a
+            pure $ Loop { error, cancel }
   in
     do
       r <- liftEffect $ O.withErrorST w
@@ -111,18 +118,19 @@ fromTransform t =
       for_ err throwError
 
       needsDrain <- liftEffect $ O.needsDrain t
+      ended <- liftEffect $ O.isWritableEnded t
       if needsDrain then do
         liftAff $ delay $ wrap 0.0
         yieldWhileReadable
         pure $ Loop { error, cancel }
-      else do
-        ma <- await
-        case ma of
+      else if ended then
+        cleanup cancel
+      else
+        await >>= case _ of
           Nothing -> cleanup cancel
           Just a' -> do
             res <- liftEffect $ O.write t a'
             case res of
-              O.WriteClosed -> cleanup cancel
               O.WriteOk -> do
                 maybeYield1
                 pure $ Loop { error, cancel }
