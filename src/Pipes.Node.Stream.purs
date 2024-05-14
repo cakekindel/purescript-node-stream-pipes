@@ -112,7 +112,6 @@ fromTransform t =
       needsDrain <- liftEffect $ O.needsDrain t
       if needsDrain then do
         liftAff $ delay $ wrap 0.0
-        liftAff $ O.awaitReadableOrClosed t
         yieldWhileReadable
         pure $ Loop {error, cancel}
       else do
