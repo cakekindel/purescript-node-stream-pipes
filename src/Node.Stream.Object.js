@@ -3,6 +3,9 @@ import Stream from "stream";
 /** @type {(s: Stream.Readable | Stream.Transform) => () => boolean} */
 export const isReadableImpl = (s) => () => s.readable;
 
+/** @type {(s: Stream.Readable | Stream.Transform) => () => number} */
+export const readableLengthImpl = (s) => () => s.readableLength;
+
 /** @type {(s: Stream.Writable | Stream.Readable) => () => boolean} */
 export const isClosedImpl = (s) => () => s.closed;
 
