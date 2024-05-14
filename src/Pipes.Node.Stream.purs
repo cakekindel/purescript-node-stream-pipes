@@ -8,10 +8,8 @@ import Control.Monad.ST.Class (liftST)
 import Control.Monad.ST.Ref as STRef
 import Control.Monad.Trans.Class (lift)
 import Data.Maybe (Maybe(..))
-import Data.Newtype (wrap)
 import Data.Traversable (for_)
 import Data.Tuple.Nested ((/\))
-import Effect.Aff (delay)
 import Effect.Aff.Class (class MonadAff, liftAff)
 import Effect.Class (liftEffect)
 import Effect.Exception (Error)
@@ -34,7 +32,6 @@ fromReadable r =
       pure $ Done unit
 
     go { error, cancel } = do
-      liftAff $ delay $ wrap 0.0
       err <- liftEffect $ liftST $ STRef.read error
       for_ err throwError
 
@@ -62,7 +59,6 @@ fromWritable w =
       pure $ Done unit
 
     go { error, cancel } = do
-      liftAff $ delay $ wrap 0.0
       err <- liftEffect $ liftST $ STRef.read error
       for_ err throwError
 
@@ -96,7 +92,6 @@ fromTransform t =
       pure $ Done unit
     yieldFromReadableHalf =
       flip tailRecM unit $ const do
-        liftAff $ delay $ wrap 0.0
         res <- liftEffect (O.read t)
         case res of
           O.ReadJust a -> do
@@ -105,11 +100,9 @@ fromTransform t =
           O.ReadWouldBlock -> pure $ Done unit
           O.ReadClosed -> yield Nothing $> Done unit
     go { error, cancel } = do
-      liftAff $ delay $ wrap 0.0
       err <- liftEffect $ liftST $ STRef.read error
       for_ err throwError
 
-      yieldFromReadableHalf
       ma <- await
       case ma of
         Nothing -> cleanup cancel
@@ -120,6 +113,7 @@ fromTransform t =
             O.WriteClosed -> cleanup cancel
             O.WriteOk -> pure $ Loop { error, cancel }
             O.WriteWouldBlock -> do
+              yieldFromReadableHalf
               liftAff $ O.awaitWritableOrClosed t
               pure $ Loop { error, cancel }
   in
