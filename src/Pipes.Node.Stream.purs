@@ -1,6 +1,6 @@
 module Pipes.Node.Stream where
 
-import Prelude
+import Prelude hiding (join)
 
 import Control.Monad.Error.Class (class MonadThrow, throwError)
 import Control.Monad.Rec.Class (class MonadRec, Step(..), tailRecM)
@@ -90,15 +90,20 @@ fromTransform t =
       liftEffect $ removeErrorListener
       fromReadable t
       pure $ Done unit
-    yieldFromReadableHalf =
-      flip tailRecM unit $ const do
-        res <- liftEffect (O.read t)
+
+    yieldWhileReadable = do
+      flip tailRecM unit \_ -> do
+        res <- liftEffect $ O.read t
         case res of
-          O.ReadJust a -> do
-            yield $ Just a
-            pure $ Loop unit
-          O.ReadWouldBlock -> pure $ Done unit
-          O.ReadClosed -> yield Nothing $> Done unit
+          O.ReadJust a -> yield (Just a) $> Loop unit
+          _ -> pure $ Done unit
+
+    maybeYield1 = do
+      res <- liftEffect $ O.read t
+      case res of
+        O.ReadJust a -> yield $ Just a
+        _ -> pure unit
+
     go { error, cancel } = do
       err <- liftEffect $ liftST $ STRef.read error
       for_ err throwError
@@ -108,12 +113,13 @@ fromTransform t =
         Nothing -> cleanup cancel
         Just a' -> do
           res <- liftEffect $ O.write t a'
-          yieldFromReadableHalf
           case res of
             O.WriteClosed -> cleanup cancel
-            O.WriteOk -> pure $ Loop { error, cancel }
+            O.WriteOk -> do
+              maybeYield1
+              pure $ Loop { error, cancel }
             O.WriteWouldBlock -> do
-              yieldFromReadableHalf
+              yieldWhileReadable
               liftAff $ O.awaitWritableOrClosed t
               pure $ Loop { error, cancel }
   in
