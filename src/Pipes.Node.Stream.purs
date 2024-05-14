@@ -108,6 +108,7 @@ fromTransform t =
       err <- liftEffect $ liftST $ STRef.read error
       for_ err throwError
 
+      yieldWhileReadable
       ma <- await
       case ma of
         Nothing -> cleanup cancel
