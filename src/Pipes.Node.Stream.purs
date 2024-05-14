@@ -94,10 +94,10 @@ fromTransform :: forall a b m. MonadThrow Error m => MonadAff m => O.Transform a
 fromTransform t =
   let
     cleanup removeErrorListener = do
-      yieldWhileReadable
       liftEffect $ O.end t
-      liftEffect $ removeErrorListener
+      liftAff $ O.awaitFinished t
       fromReadable t
+      liftEffect $ removeErrorListener
       pure $ Done unit
 
     yieldWhileReadable = do
