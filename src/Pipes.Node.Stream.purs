@@ -8,12 +8,13 @@ import Control.Monad.ST.Class (liftST)
 import Control.Monad.ST.Ref as STRef
 import Control.Monad.Trans.Class (lift)
 import Data.Maybe (Maybe(..))
+import Data.Newtype (wrap)
 import Data.Traversable (for_)
 import Data.Tuple.Nested ((/\))
+import Effect.Aff (delay)
 import Effect.Aff.Class (class MonadAff, liftAff)
 import Effect.Class (liftEffect)
 import Effect.Exception (Error)
-import Node.Stream.Object (needsDrain)
 import Node.Stream.Object as O
 import Pipes (await, yield)
 import Pipes (for) as P
@@ -63,17 +64,16 @@ fromWritable w =
       err <- liftEffect $ liftST $ STRef.read error
       for_ err throwError
 
+      needsDrain <- liftEffect $ O.needsDrain w
+      when needsDrain $ liftAff $ O.awaitWritableOrClosed w
       ma <- await
       case ma of
         Nothing -> cleanup cancel
         Just a -> do
           res <- liftEffect $ O.write w a
           case res of
-            O.WriteOk -> pure $ Loop { error, cancel }
-            O.WriteWouldBlock -> do
-              liftAff (O.awaitWritableOrClosed w)
-              pure $ Loop { error, cancel }
             O.WriteClosed -> cleanup cancel
+            _ -> pure $ Loop { error, cancel }
   in
     do
       r <- liftEffect $ O.withErrorST w
@@ -111,6 +111,7 @@ fromTransform t =
 
       needsDrain <- liftEffect $ O.needsDrain t
       if needsDrain then do
+        liftAff $ delay $ wrap 0.0
         liftAff $ O.awaitReadableOrClosed t
         yieldWhileReadable
         pure $ Loop {error, cancel}
