@@ -156,11 +156,9 @@ fromStringWritable = unsafeCoerce
 
 awaitReadableOrClosed :: forall s a. Read s a => s -> Aff Unit
 awaitReadableOrClosed s = do
-  closed <- liftEffect $ isClosed s
-  ended <- liftEffect $ isReadableEnded s
   readable <- liftEffect $ isReadable s
   length <- liftEffect $ readableLength s
-  when (not ended && not closed && not readable && length > 0)
+  when (readable && length == 0)
     $ liftEither
       =<< parOneOf
         [ onceAff0 readableH s $> Right unit
@@ -173,10 +171,9 @@ awaitFinished s = onceAff0 finishH s
 
 awaitWritableOrClosed :: forall s a. Write s a => s -> Aff Unit
 awaitWritableOrClosed s = do
-  closed <- liftEffect $ isClosed s
-  ended <- liftEffect $ isWritableEnded s
   writable <- liftEffect $ isWritable s
-  when (not ended && not closed && not writable)
+  needsDrain <- liftEffect $ needsDrain s
+  when (writable && needsDrain)
     $ liftEither =<< parOneOf [ onceAff0 drainH s $> Right unit, onceAff0 closeH s $> Right unit, Left <$> onceAff1 errorH s ]
 
 onceAff0 :: forall e. EventHandle0 e -> e -> Aff Unit
