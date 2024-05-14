@@ -119,6 +119,8 @@ fromTransform t =
               maybeYield1
               pure $ Loop { error, cancel }
             O.WriteWouldBlock -> do
+              queueLen <- liftEffect $ O.readableLength t
+              when (queueLen == 0) $ liftAff $ O.awaitReadableOrClosed t
               yieldWhileReadable
               liftAff $ O.awaitWritableOrClosed t
               pure $ Loop { error, cancel }
