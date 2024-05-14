@@ -60,6 +60,7 @@ foreign import isWritableImpl :: forall s. s -> Effect Boolean
 foreign import isReadableEndedImpl :: forall s. s -> Effect Boolean
 foreign import isWritableEndedImpl :: forall s. s -> Effect Boolean
 foreign import isClosedImpl :: forall s. s -> Effect Boolean
+foreign import needsDrainImpl :: forall s. s -> Effect Boolean
 foreign import readableLengthImpl :: forall s. s -> Effect Int
 
 readResultFFI :: forall a. ReadResultFFI a
@@ -89,6 +90,7 @@ class Stream s <= Read s a | s -> a where
 
 class Stream s <= Write s a | s -> a where
   isWritable :: s -> Effect Boolean
+  needsDrain :: s -> Effect Boolean
   isWritableEnded :: s -> Effect Boolean
   write :: s -> a -> Effect WriteResult
   end :: s -> Effect Unit
@@ -114,16 +116,19 @@ instance Write (Writable a) a where
   isWritableEnded = isWritableEndedImpl
   write s = writeImpl writeResultFFI s
   end = endImpl
+  needsDrain = needsDrainImpl
 else instance Write (Transform a b) a where
   isWritable = isWritableImpl
   isWritableEnded = isWritableEndedImpl
   write s = writeImpl writeResultFFI s
   end = endImpl
+  needsDrain = needsDrainImpl
 else instance (Write s a) => Write s a where
   isWritable = isWritableImpl
   isWritableEnded = isWritableEndedImpl
   write s a = write s a
   end s = end s
+  needsDrain = needsDrainImpl
 
 withErrorST :: forall s. Stream s => s -> Effect { cancel :: Effect Unit, error :: STRef Global (Maybe Error) }
 withErrorST s = do

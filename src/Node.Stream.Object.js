@@ -12,6 +12,9 @@ export const isClosedImpl = (s) => () => s.closed;
 /** @type {(s: Stream.Writable | Stream.Transform) => () => boolean} */
 export const isWritableImpl = (s) => () => s.writable;
 
+/** @type {(s: Stream.Writable | Stream.Transform) => () => boolean} */
+export const needsDrainImpl = (s) => () => s.writableNeedDrain;
+
 /** @type {(s: Stream.Readable | Stream.Transform) => () => boolean} */
 export const isReadableEndedImpl = (s) => () => s.readableEnded;
 
