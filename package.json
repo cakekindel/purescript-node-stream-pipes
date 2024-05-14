@@ -1,6 +1,6 @@
 {
   "name": "purescript-node-stream-pipes",
-  "version": "v1.3.3",
+  "version": "v1.4.0",
   "type": "module",
   "dependencies": {
     "csv-parse": "^5.5.5",
