@@ -12,11 +12,14 @@ import Data.List (List)
 import Data.List as List
 import Data.Map (Map)
 import Data.Map as Map
+import Data.Maybe (Maybe(..), maybe)
 import Data.Tuple.Nested (type (/\), (/\))
 import Effect.Class (class MonadEffect, liftEffect)
 import Foreign.Object (Object)
 import Foreign.Object.ST as Object.ST
 import Foreign.Object.ST.Unsafe as Object.ST.Unsafe
+import Node.Buffer (Buffer)
+import Node.Buffer as Buffer
 import Pipes.Core (Producer)
 import Pipes.Internal (Proxy(..))
 
@@ -47,6 +50,21 @@ fold f b0 p0 = traverse (\b a -> pure $ f b a) b0 p0
 -- | Uses `MonadRec`, supporting producers of arbitrary length.
 foreach :: forall a m. MonadRec m => (a -> m Unit) -> Producer a m Unit -> m Unit
 foreach f p0 = traverse (\_ a -> f a) unit p0
+
+-- | Concatenate all produced buffers
+toBuffer :: forall m. MonadRec m => MonadEffect m => Producer Buffer m Unit -> m Buffer
+toBuffer p =
+  (liftEffect <<< maybe (Buffer.alloc 0) pure)
+    =<< traverse
+      ( flip \b ->
+          case _ of
+            Just acc -> do
+              new <- liftEffect $ Buffer.concat [ acc, b ]
+              pure $ Just new
+            _ -> pure $ Just b
+      )
+      Nothing
+      p
 
 -- | Collect all values from a `Producer` into an array.
 toArray :: forall a m. MonadRec m => MonadEffect m => Producer a m Unit -> m (Array a)

@@ -113,7 +113,7 @@ fromTransform t =
       if needsDrain then do
         liftAff $ delay $ wrap 0.0
         yieldWhileReadable
-        pure $ Loop {error, cancel}
+        pure $ Loop { error, cancel }
       else do
         ma <- await
         case ma of

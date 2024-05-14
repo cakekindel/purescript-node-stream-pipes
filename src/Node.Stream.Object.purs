@@ -160,11 +160,11 @@ awaitReadableOrClosed s = do
   length <- liftEffect $ readableLength s
   when (readable && length == 0)
     $ liftEither
-      =<< parOneOf
-        [ onceAff0 readableH s $> Right unit
-        , onceAff0 closeH s $> Right unit
-        , Left <$> onceAff1 errorH s
-        ]
+        =<< parOneOf
+          [ onceAff0 readableH s $> Right unit
+          , onceAff0 closeH s $> Right unit
+          , Left <$> onceAff1 errorH s
+          ]
 
 awaitFinished :: forall s a. Write s a => s -> Aff Unit
 awaitFinished s = onceAff0 finishH s
