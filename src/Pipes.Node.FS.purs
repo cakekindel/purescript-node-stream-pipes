@@ -23,7 +23,7 @@ import Prim.Row (class Union)
 -- |
 -- | See `Pipes.Node.Stream.withEOS` for converting `Producer a`
 -- | into `Producer (Maybe a)`, emitting `Nothing` before exiting.
-write
+write'
   :: forall r trash m
    . Union r trash WriteStreamOptions
   => MonadAff m
@@ -31,27 +31,27 @@ write
   => Record r
   -> FilePath
   -> Consumer (Maybe Buffer) m Unit
-write o p = do
+write' o p = do
   w <- liftEffect $ FS.Stream.createWriteStream' p o
-  fromWritable $ O.fromBufferWritable w
+  fromWritable $ O.unsafeCoerceWritable w
 
 -- | Open a file in write mode, failing if the file already exists.
 -- |
--- | `write {flags: "wx"}`
+-- | `write' {flags: "wx"}`
 create :: forall m. MonadAff m => MonadThrow Error m => FilePath -> Consumer (Maybe Buffer) m Unit
-create = write { flags: "wx" }
+create = write' { flags: "wx" }
 
 -- | Open a file in write mode, truncating it if the file already exists.
 -- |
--- | `write {flags: "w"}`
-truncate :: forall m. MonadAff m => MonadThrow Error m => FilePath -> Consumer (Maybe Buffer) m Unit
-truncate = write { flags: "w" }
+-- | `write' {flags: "w"}`
+trunc :: forall m. MonadAff m => MonadThrow Error m => FilePath -> Consumer (Maybe Buffer) m Unit
+trunc = write' { flags: "w" }
 
 -- | Open a file in write mode, appending written contents if the file already exists.
 -- |
--- | `write {flags: "a"}`
+-- | `write' {flags: "a"}`
 append :: forall m. MonadAff m => MonadThrow Error m => FilePath -> Consumer (Maybe Buffer) m Unit
-append = write { flags: "a" }
+append = write' { flags: "a" }
 
 -- | Creates a `fs.Readable` stream for the file at the given path.
 -- |
@@ -60,7 +60,7 @@ append = write { flags: "a" }
 read :: forall m. MonadAff m => MonadThrow Error m => FilePath -> Producer (Maybe Buffer) m Unit
 read p = do
   r <- liftEffect $ FS.Stream.createReadStream p
-  fromReadable $ O.fromBufferReadable r
+  fromReadable $ O.unsafeCoerceReadable r
 
 -- | Creates a `fs.Readable` stream for the file at the given path.
 -- |
@@ -76,4 +76,4 @@ read'
   -> Producer (Maybe Buffer) m Unit
 read' opts p = do
   r <- liftEffect $ FS.Stream.createReadStream' p opts
-  fromReadable $ O.fromBufferReadable r
+  fromReadable $ O.unsafeCoerceReadable r

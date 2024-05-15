@@ -40,11 +40,11 @@ foreign import charsTransform :: Effect (O.Transform String String)
 
 writer :: forall m. MonadEffect m => String -> m (O.Writable Buffer /\ Consumer (Maybe Buffer) Aff Unit)
 writer a = do
-  stream <- liftEffect $ O.fromBufferWritable <$> FS.Stream.createWriteStream a
+  stream <- liftEffect $ O.unsafeCoerceWritable <$> FS.Stream.createWriteStream a
   pure $ stream /\ S.fromWritable stream
 
 reader :: forall m. MonadEffect m => String -> m (Producer (Maybe Buffer) Aff Unit)
-reader a = liftEffect $ S.fromReadable <$> O.fromBufferReadable <$> FS.Stream.createReadStream a
+reader a = liftEffect $ S.fromReadable <$> O.unsafeCoerceReadable <$> FS.Stream.createReadStream a
 
 spec :: Spec Unit
 spec =
@@ -64,7 +64,7 @@ spec =
     describe "Writable" $ around tmpFile do
       describe "fs.WriteStream" do
         it "pipe to file" \p -> do
-          stream <- O.fromBufferWritable <$> liftEffect (FS.Stream.createWriteStream p)
+          stream <- O.unsafeCoerceWritable <$> liftEffect (FS.Stream.createWriteStream p)
           let
             w = S.fromWritable stream
             source = do
@@ -75,7 +75,7 @@ spec =
           contents `shouldEqual` "hello"
           shouldEqual true =<< liftEffect (O.isWritableEnded stream)
         it "async pipe to file" \p -> do
-          w <- S.fromWritable <$> O.fromBufferWritable <$> liftEffect (FS.Stream.createWriteStream p)
+          w <- S.fromWritable <$> O.unsafeCoerceWritable <$> liftEffect (FS.Stream.createWriteStream p)
           let
             source = do
               yield "hello, "
@@ -110,7 +110,7 @@ spec =
         let
           json = yield $ writeJSON { foo: "bar" }
           exp = "1f8b0800000000000003ab564acbcf57b2524a4a2c52aa0500eff52bfe0d000000"
-        gzip <- S.fromTransform <$> O.fromBufferTransform <$> liftEffect (Zlib.toDuplex <$> Zlib.createGzip)
+        gzip <- S.fromTransform <$> O.unsafeCoerceTransform <$> liftEffect (Zlib.toDuplex <$> Zlib.createGzip)
         outs :: List.List String <- Pipes.toListM (S.withEOS (json >-> Pipes.Buffer.fromString UTF8) >-> gzip >-> S.unEOS >-> Pipes.Buffer.toString Hex)
         fold outs `shouldEqual` exp
       around tmpFiles
@@ -118,11 +118,11 @@ spec =
             liftEffect $ FS.writeTextFile UTF8 a $ writeJSON [ 1, 2, 3, 4 ]
             areader <- liftEffect $ reader a
             bwritestream /\ bwriter <- liftEffect $ writer b
-            gzip <- S.fromTransform <$> O.fromBufferTransform <$> liftEffect (Zlib.toDuplex <$> Zlib.createGzip)
+            gzip <- S.fromTransform <$> O.unsafeCoerceTransform <$> liftEffect (Zlib.toDuplex <$> Zlib.createGzip)
             runEffect $ areader >-> gzip >-> bwriter
             shouldEqual true =<< liftEffect (O.isWritableEnded bwritestream)
 
-            gunzip <- S.fromTransform <$> O.fromBufferTransform <$> liftEffect (Zlib.toDuplex <$> Zlib.createGunzip)
+            gunzip <- S.fromTransform <$> O.unsafeCoerceTransform <$> liftEffect (Zlib.toDuplex <$> Zlib.createGunzip)
             breader <- liftEffect $ reader b
             nums <- Pipes.toListM (breader >-> gunzip >-> S.unEOS >-> Pipes.Buffer.toString UTF8 >-> jsonParse @(Array Int) >-> Pipes.mapFoldable identity)
             Array.fromFoldable nums `shouldEqual` [ 1, 2, 3, 4 ]

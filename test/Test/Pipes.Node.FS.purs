@@ -33,11 +33,6 @@ spec = describe "Pipes.Node.FS" do
       liftEffect $ FS.writeTextFile UTF8 p "foo"
       s <- fold <$> Pipes.toListM (Pipes.Node.FS.read p >-> unEOS >-> Pipes.Node.Buffer.toString UTF8)
       s `shouldEqual` "foo"
-    around tmpFile $ it "fails if the file already exists" \p -> do
-      liftEffect $ FS.writeTextFile UTF8 p "foo"
-      flip catchError (const $ pure unit) do
-        Pipes.runEffect $ withEOS (yield "foo" >-> Pipes.Node.Buffer.fromString UTF8) >-> Pipes.Node.FS.create p
-        fail "should have thrown"
   describe "create" do
     around tmpFile $ it "creates the file when not exists" \p -> do
       Pipes.runEffect $ withEOS (yield "foo" >-> Pipes.Node.Buffer.fromString UTF8) >-> Pipes.Node.FS.create p
@@ -59,14 +54,14 @@ spec = describe "Pipes.Node.FS" do
       Pipes.runEffect $ withEOS (yield "bar" >-> Pipes.Node.Buffer.fromString UTF8) >-> Pipes.Node.FS.append p
       contents <- liftEffect $ FS.readTextFile UTF8 p
       contents `shouldEqual` "foo\nbar"
-  describe "truncate" do
+  describe "trunc" do
     around tmpFile $ it "creates the file when not exists" \p -> do
-      Pipes.runEffect $ withEOS (yield "foo" >-> Pipes.Node.Buffer.fromString UTF8) >-> Pipes.Node.FS.truncate p
+      Pipes.runEffect $ withEOS (yield "foo" >-> Pipes.Node.Buffer.fromString UTF8) >-> Pipes.Node.FS.trunc p
       contents <- liftEffect $ FS.readTextFile UTF8 p
       contents `shouldEqual` "foo"
     around tmpFile $ it "overwrites contents" \p -> do
-      Pipes.runEffect $ withEOS (yield "foo" >-> Pipes.Node.Buffer.fromString UTF8) >-> Pipes.Node.FS.truncate p
-      Pipes.runEffect $ withEOS (yield "bar" >-> Pipes.Node.Buffer.fromString UTF8) >-> Pipes.Node.FS.truncate p
+      Pipes.runEffect $ withEOS (yield "foo" >-> Pipes.Node.Buffer.fromString UTF8) >-> Pipes.Node.FS.trunc p
+      Pipes.runEffect $ withEOS (yield "bar" >-> Pipes.Node.Buffer.fromString UTF8) >-> Pipes.Node.FS.trunc p
       contents <- liftEffect $ FS.readTextFile UTF8 p
       contents `shouldEqual` "bar"
   around tmpFiles $ it "json lines >-> parse >-> _.foo >-> write" \(a /\ b) -> do

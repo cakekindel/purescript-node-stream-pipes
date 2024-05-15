@@ -20,6 +20,7 @@ import Foreign.Object.ST as Object.ST
 import Foreign.Object.ST.Unsafe as Object.ST.Unsafe
 import Node.Buffer (Buffer)
 import Node.Buffer as Buffer
+import Node.Encoding (Encoding)
 import Pipes.Core (Producer)
 import Pipes.Internal (Proxy(..))
 
@@ -51,7 +52,16 @@ fold f b0 p0 = traverse (\b a -> pure $ f b a) b0 p0
 foreach :: forall a m. MonadRec m => (a -> m Unit) -> Producer a m Unit -> m Unit
 foreach f p0 = traverse (\_ a -> f a) unit p0
 
--- | Concatenate all produced buffers
+-- | `append` all emitted values to `mempty`
+toMonoid :: forall a m. Monoid a => MonadRec m => MonadEffect m => Producer a m Unit -> m a
+toMonoid = fold (<>) mempty
+
+-- | Concatenate all buffers to a single buffer, then decode with the
+-- | provided encoding.
+toStringWith :: forall m. MonadRec m => MonadEffect m => Encoding -> Producer Buffer m Unit -> m String
+toStringWith enc = (liftEffect <<< Buffer.toString enc) <=< toBuffer
+
+-- | Concatenate all produced buffers to a single buffer
 toBuffer :: forall m. MonadRec m => MonadEffect m => Producer Buffer m Unit -> m Buffer
 toBuffer p =
   (liftEffect <<< maybe (Buffer.alloc 0) pure)
@@ -74,8 +84,17 @@ toArray p = do
   liftEffect $ liftST $ Array.ST.unsafeFreeze st
 
 -- | Collect all values from a `Producer` into a list.
+-- |
+-- | Reverses the list after collecting, so that values will be
+-- | in the order they were emitted.
 toList :: forall a m. MonadRec m => MonadEffect m => Producer a m Unit -> m (List a)
 toList = map List.reverse <<< fold (flip List.Cons) List.Nil
+
+-- | Collect all values from a `Producer` into a list.
+-- |
+-- | Does not reverse the list after collecting.
+toListRev :: forall a m. MonadRec m => MonadEffect m => Producer a m Unit -> m (List a)
+toListRev = map List.reverse <<< fold (flip List.Cons) List.Nil
 
 -- | Collect all values from a `Producer` into a Javascript Object.
 toObject :: forall a m. MonadRec m => MonadEffect m => Producer (String /\ a) m Unit -> m (Object a)

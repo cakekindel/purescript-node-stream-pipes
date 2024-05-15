@@ -18,7 +18,7 @@ import Pipes.Node.Stream (fromTransform)
 fromZlib :: forall r m. MonadAff m => MonadThrow Error m => Effect (ZlibStream r) -> Pipe (Maybe Buffer) (Maybe Buffer) m Unit
 fromZlib z = do
   raw <- liftEffect $ Zlib.toDuplex <$> z
-  fromTransform $ O.fromBufferTransform raw
+  fromTransform $ O.unsafeCoerceTransform raw
 
 gzip :: forall m. MonadAff m => MonadThrow Error m => Pipe (Maybe Buffer) (Maybe Buffer) m Unit
 gzip = fromZlib Zlib.createGzip

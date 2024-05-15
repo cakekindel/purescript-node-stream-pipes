@@ -3,13 +3,13 @@ module Pipes.Node.Stream where
 import Prelude hiding (join)
 
 import Control.Monad.Error.Class (class MonadThrow, throwError)
-import Control.Monad.Rec.Class (class MonadRec, Step(..), tailRecM)
+import Control.Monad.Rec.Class (class MonadRec, Step(..), tailRecM, whileJust)
 import Control.Monad.ST.Class (liftST)
 import Control.Monad.ST.Ref as STRef
 import Control.Monad.Trans.Class (lift)
-import Data.Maybe (Maybe(..))
+import Data.Maybe (Maybe(..), maybe)
 import Data.Newtype (wrap)
-import Data.Traversable (for_)
+import Data.Traversable (for_, traverse, traverse_)
 import Data.Tuple.Nested ((/\))
 import Effect.Aff (delay)
 import Effect.Aff.Class (class MonadAff, liftAff)
@@ -57,90 +57,74 @@ fromReadable r =
 -- | When `Nothing` is piped to this, the stream will
 -- | be `end`ed, and the pipe will noop if invoked again.
 fromWritable :: forall s a m. MonadThrow Error m => MonadAff m => O.Write s a => s -> Consumer (Maybe a) m Unit
-fromWritable w =
+fromWritable w = do
+  { error: errorST, cancel: removeErrorListener } <- liftEffect $ O.withErrorST w
+
   let
-    cleanup rmErrorListener = do
-      liftEffect rmErrorListener
-      liftEffect $ O.end w
+    maybeThrow = traverse_ throwError =<< liftEffect (liftST $ STRef.read errorST)
+
+    waitCanWrite = do
+      shouldWait <- liftEffect $ O.needsDrain w
+      when shouldWait $ liftAff $ O.awaitWritableOrClosed w
+
+    cleanup = do
       liftAff $ O.awaitFinished w
-      pure $ Done unit
+      maybeThrow
+      liftEffect removeErrorListener
 
-    go { error, cancel } = do
-      err <- liftEffect $ liftST $ STRef.read error
-      for_ err throwError
+    onEOS = liftEffect (O.end w) *> cleanup $> Done unit
+    onChunk a = liftEffect (O.write w a) $> Loop unit
 
-      needsDrain <- liftEffect $ O.needsDrain w
-      when needsDrain $ liftAff $ O.awaitWritableOrClosed w
-
+    go _ = do
+      maybeThrow
+      waitCanWrite
       ended <- liftEffect $ O.isWritableEnded w
       if ended then
-        cleanup cancel
+        cleanup $> Done unit
       else
-        await >>= case _ of
-          Nothing -> cleanup cancel
-          Just a -> do
-            void $ liftEffect $ O.write w a
-            pure $ Loop { error, cancel }
-  in
-    do
-      r <- liftEffect $ O.withErrorST w
-      tailRecM go r
+        await >>= maybe onEOS onChunk
+
+  tailRecM go unit
 
 -- | Convert a `Transform` stream to a `Pipe`.
 -- |
 -- | When `Nothing` is piped to this, the `Transform` stream will
 -- | be `end`ed, and the pipe will noop if invoked again.
 fromTransform :: forall a b m. MonadThrow Error m => MonadAff m => O.Transform a b -> Pipe (Maybe a) (Maybe b) m Unit
-fromTransform t =
+fromTransform t = do
+  { error: errorST, cancel: removeErrorListener } <- liftEffect $ O.withErrorST t
   let
-    cleanup removeErrorListener = do
-      liftEffect $ O.end t
+    maybeThrow = traverse_ throwError =<< liftEffect (liftST $ STRef.read errorST)
+
+    cleanup = do
       liftAff $ O.awaitFinished t
       fromReadable t
+      maybeThrow
       liftEffect $ removeErrorListener
-      pure $ Done unit
 
-    yieldWhileReadable = do
-      flip tailRecM unit \_ -> do
-        res <- liftEffect $ O.read t
-        case res of
-          O.ReadJust a -> yield (Just a) $> Loop unit
-          _ -> pure $ Done unit
+    yieldWhileReadable = void $ whileJust $ maybeYield1
 
-    maybeYield1 = do
-      res <- liftEffect $ O.read t
-      case res of
-        O.ReadJust a -> yield $ Just a
-        _ -> pure unit
+    maybeYield1 = traverse (\a -> yield (Just a) $> Just unit) =<< O.maybeReadResult <$> liftEffect (O.read t)
 
-    go { error, cancel } = do
-      err <- liftEffect $ liftST $ STRef.read error
-      for_ err throwError
+    onEOS = liftEffect (O.end t) *> cleanup $> Done unit
+    onChunk a =
+      liftEffect (O.write t a)
+        >>= case _ of
+          O.WriteOk -> maybeYield1 $> Loop unit
+          O.WriteWouldBlock -> yieldWhileReadable $> Loop unit
 
+    go _ = do
+      maybeThrow
       needsDrain <- liftEffect $ O.needsDrain t
       ended <- liftEffect $ O.isWritableEnded t
-      if needsDrain then do
-        liftAff $ delay $ wrap 0.0
-        yieldWhileReadable
-        pure $ Loop { error, cancel }
+      if needsDrain then
+        liftAff (delay $ wrap 0.0) *> yieldWhileReadable $> Loop unit
       else if ended then
-        cleanup cancel
+        cleanup $> Done unit
       else
-        await >>= case _ of
-          Nothing -> cleanup cancel
-          Just a' -> do
-            res <- liftEffect $ O.write t a'
-            case res of
-              O.WriteOk -> do
-                maybeYield1
-                pure $ Loop { error, cancel }
-              O.WriteWouldBlock -> do
-                yieldWhileReadable
-                pure $ Loop { error, cancel }
-  in
-    do
-      r <- liftEffect $ O.withErrorST t
-      tailRecM go r
+        await >>= maybe onEOS onChunk
+
+  tailRecM go unit
 
 -- | Given a `Producer` of values, wrap them in `Just`.
 -- |

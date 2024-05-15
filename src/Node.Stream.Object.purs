@@ -34,6 +34,10 @@ derive instance Eq a => Eq (ReadResult a)
 instance Show (ReadResult a) where
   show = genericShow <<< map (const "..")
 
+maybeReadResult :: forall a. ReadResult a -> Maybe a
+maybeReadResult (ReadWouldBlock) = Nothing
+maybeReadResult (ReadJust a) = Just a
+
 data WriteResult
   = WriteWouldBlock
   | WriteOk
@@ -134,23 +138,32 @@ withErrorST s = do
   cancel <- flip (Event.once errorH) s \e -> void $ liftST $ STRef.write (Just e) error
   pure { error, cancel }
 
-fromBufferReadable :: forall r. Stream.Readable r -> Readable Buffer
-fromBufferReadable = unsafeCoerce
+unsafeCoerceWritable :: forall r a. Stream.Writable r -> Writable a
+unsafeCoerceWritable = unsafeCoerce
 
-fromBufferTransform :: Stream.Duplex -> Transform Buffer Buffer
-fromBufferTransform = unsafeCoerce
+unsafeCoerceReadable :: forall r a. Stream.Readable r -> Readable a
+unsafeCoerceReadable = unsafeCoerce
 
-fromBufferWritable :: forall r. Stream.Writable r -> Writable Buffer
-fromBufferWritable = unsafeCoerce
+unsafeCoerceTransform :: forall a b. Stream.Duplex -> Transform a b
+unsafeCoerceTransform = unsafeCoerce
 
-fromStringReadable :: forall r. Stream.Readable r -> Readable String
-fromStringReadable = unsafeCoerce
+unsafeFromBufferReadable :: forall r. Stream.Readable r -> Readable Buffer
+unsafeFromBufferReadable = unsafeCoerce
 
-fromStringTransform :: Stream.Duplex -> Transform String String
-fromStringTransform = unsafeCoerce
+unsafeFromBufferTransform :: forall a. Stream.Duplex -> Transform Buffer a
+unsafeFromBufferTransform = unsafeCoerce
 
-fromStringWritable :: forall r. Stream.Writable r -> Writable String
-fromStringWritable = unsafeCoerce
+unsafeFromBufferWritable :: forall r. Stream.Writable r -> Writable Buffer
+unsafeFromBufferWritable = unsafeCoerce
+
+unsafeFromStringReadable :: forall r. Stream.Readable r -> Readable String
+unsafeFromStringReadable = unsafeCoerce
+
+unsafeFromStringTransform :: forall a. Stream.Duplex -> Transform String a
+unsafeFromStringTransform = unsafeCoerce
+
+unsafeFromStringWritable :: forall r. Stream.Writable r -> Writable String
+unsafeFromStringWritable = unsafeCoerce
 
 awaitReadableOrClosed :: forall s a. Read s a => s -> Aff Unit
 awaitReadableOrClosed s = do
