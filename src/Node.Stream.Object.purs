@@ -14,8 +14,9 @@ import Data.Maybe (Maybe(..))
 import Data.Show.Generic (genericShow)
 import Effect (Effect)
 import Effect.Aff (Aff, effectCanceler, makeAff)
+import Effect.Aff as Aff
 import Effect.Class (liftEffect)
-import Effect.Exception (Error)
+import Effect.Exception (Error, error)
 import Effect.Uncurried (mkEffectFn1)
 import Node.Buffer (Buffer)
 import Node.EventEmitter (EventHandle(..))
@@ -61,6 +62,7 @@ foreign import isReadableImpl :: forall s. s -> Effect Boolean
 foreign import isWritableImpl :: forall s. s -> Effect Boolean
 foreign import isReadableEndedImpl :: forall s. s -> Effect Boolean
 foreign import isWritableEndedImpl :: forall s. s -> Effect Boolean
+foreign import isWritableFinishedImpl :: forall s. s -> Effect Boolean
 foreign import isClosedImpl :: forall s. s -> Effect Boolean
 foreign import needsDrainImpl :: forall s. s -> Effect Boolean
 foreign import readableLengthImpl :: forall s. s -> Effect Int
@@ -94,6 +96,7 @@ class Stream s <= Write s a | s -> a where
   isWritable :: s -> Effect Boolean
   needsDrain :: s -> Effect Boolean
   isWritableEnded :: s -> Effect Boolean
+  isWritableFinished :: s -> Effect Boolean
   write :: s -> a -> Effect WriteResult
   end :: s -> Effect Unit
 
@@ -116,18 +119,21 @@ else instance (Read s a) => Read s a where
 instance Write (Writable a) a where
   isWritable = isWritableImpl
   isWritableEnded = isWritableEndedImpl
+  isWritableFinished = isWritableFinishedImpl
   write s = writeImpl writeResultFFI s
   end = endImpl
   needsDrain = needsDrainImpl
 else instance Write (Transform a b) a where
   isWritable = isWritableImpl
   isWritableEnded = isWritableEndedImpl
+  isWritableFinished = isWritableFinishedImpl
   write s = writeImpl writeResultFFI s
   end = endImpl
   needsDrain = needsDrainImpl
 else instance (Write s a) => Write s a where
   isWritable = isWritableImpl
   isWritableEnded = isWritableEndedImpl
+  isWritableFinished = isWritableFinishedImpl
   write s a = write s a
   end s = end s
   needsDrain = needsDrainImpl
@@ -167,25 +173,38 @@ unsafeFromStringWritable = unsafeCoerce
 
 awaitReadableOrClosed :: forall s a. Read s a => s -> Aff Unit
 awaitReadableOrClosed s = do
+  fiber <-
+    Aff.forkAff $ parOneOf
+      [ onceAff0 readableH s $> Right unit
+      , onceAff0 closeH s $> Right unit
+      , Left <$> onceAff1 errorH s
+      ]
+  closed <- liftEffect $ isClosed s
+  readEnded <- liftEffect $ isReadableEnded s
   readable <- liftEffect $ isReadable s
   length <- liftEffect $ readableLength s
-  when (readable && length == 0)
-    $ liftEither
-        =<< parOneOf
-          [ onceAff0 readableH s $> Right unit
-          , onceAff0 closeH s $> Right unit
-          , Left <$> onceAff1 errorH s
-          ]
+  if (not closed && not readEnded && readable && length == 0) then
+    liftEither =<< Aff.joinFiber fiber
+  else
+    Aff.killFiber (error "") fiber
 
 awaitFinished :: forall s a. Write s a => s -> Aff Unit
-awaitFinished s = onceAff0 finishH s
+awaitFinished s = do
+  fiber <- Aff.forkAff $ onceAff0 finishH s
+  finished <- liftEffect $ isWritableFinished s
+  if not finished then Aff.joinFiber fiber else Aff.killFiber (error "") fiber
 
 awaitWritableOrClosed :: forall s a. Write s a => s -> Aff Unit
 awaitWritableOrClosed s = do
+  fiber <- Aff.forkAff $ parOneOf [ onceAff0 drainH s $> Right unit, onceAff0 closeH s $> Right unit, Left <$> onceAff1 errorH s ]
+  closed <- liftEffect $ isClosed s
+  writeEnded <- liftEffect $ isWritableEnded s
   writable <- liftEffect $ isWritable s
   needsDrain <- liftEffect $ needsDrain s
-  when (writable && needsDrain)
-    $ liftEither =<< parOneOf [ onceAff0 drainH s $> Right unit, onceAff0 closeH s $> Right unit, Left <$> onceAff1 errorH s ]
+  if not closed && not writeEnded && writable && needsDrain then
+    liftEither =<< Aff.joinFiber fiber
+  else
+    Aff.killFiber (error "") fiber
 
 onceAff0 :: forall e. EventHandle0 e -> e -> Aff Unit
 onceAff0 h emitter = makeAff \res -> do

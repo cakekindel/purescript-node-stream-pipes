@@ -21,6 +21,9 @@ export const isReadableEndedImpl = (s) => () => s.readableEnded;
 /** @type {(s: Stream.Writable | Stream.Transform) => () => boolean} */
 export const isWritableEndedImpl = (s) => () => s.writableEnded;
 
+/** @type {(s: Stream.Writable | Stream.Transform) => () => boolean} */
+export const isWritableFinishedImpl = (s) => () => s.writableFinished;
+
 /** @type {(s: Stream.Writable | Stream.Transform) => () => void} */
 export const endImpl = (s) => () => s.end();
 

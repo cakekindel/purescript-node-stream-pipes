@@ -8,10 +8,8 @@ import Control.Monad.ST.Class (liftST)
 import Control.Monad.ST.Ref as STRef
 import Control.Monad.Trans.Class (lift)
 import Data.Maybe (Maybe(..), maybe)
-import Data.Newtype (wrap)
 import Data.Traversable (for_, traverse, traverse_)
 import Data.Tuple.Nested ((/\))
-import Effect.Aff (delay)
 import Effect.Aff.Class (class MonadAff, liftAff)
 import Effect.Class (liftEffect)
 import Effect.Exception (Error)
@@ -19,7 +17,6 @@ import Node.Stream.Object as O
 import Pipes (await, yield)
 import Pipes (for) as P
 import Pipes.Core (Consumer, Pipe, Producer, Producer_)
-import Pipes.Prelude (mapFoldable) as P
 import Pipes.Util (InvokeResult(..), invoke)
 
 -- | Convert a `Readable` stream to a `Pipe`.
@@ -97,28 +94,32 @@ fromTransform t = do
     maybeThrow = traverse_ throwError =<< liftEffect (liftST $ STRef.read errorST)
 
     cleanup = do
+      flip tailRecM unit $ const do
+        liftAff $ O.awaitReadableOrClosed t
+        readEnded <- liftEffect $ O.isReadableEnded t
+        yieldWhileReadable
+        pure $ (if readEnded then Done else Loop) unit
+
       liftAff $ O.awaitFinished t
-      fromReadable t
       maybeThrow
       liftEffect $ removeErrorListener
+      yield Nothing
 
     yieldWhileReadable = void $ whileJust $ maybeYield1
 
     maybeYield1 = traverse (\a -> yield (Just a) $> Just unit) =<< O.maybeReadResult <$> liftEffect (O.read t)
 
     onEOS = liftEffect (O.end t) *> cleanup $> Done unit
-    onChunk a =
-      liftEffect (O.write t a)
-        >>= case _ of
-          O.WriteOk -> maybeYield1 $> Loop unit
-          O.WriteWouldBlock -> yieldWhileReadable $> Loop unit
+    onChunk a = liftEffect (O.write t a) $> Loop unit
 
     go _ = do
       maybeThrow
       needsDrain <- liftEffect $ O.needsDrain t
       ended <- liftEffect $ O.isWritableEnded t
-      if needsDrain then
-        liftAff (delay $ wrap 0.0) *> yieldWhileReadable $> Loop unit
+      if needsDrain then do
+        yieldWhileReadable
+        liftAff $ O.awaitWritableOrClosed t
+        pure $ Loop unit
       else if ended then
         cleanup $> Done unit
       else
@@ -136,7 +137,7 @@ withEOS a = do
 
 -- | Strip a pipeline of the EOS signal
 unEOS :: forall a m. Monad m => Pipe (Maybe a) a m Unit
-unEOS = P.mapFoldable identity
+unEOS = tailRecM (const $ maybe (pure $ Done unit) (\a -> yield a $> Loop unit) =<< await) unit
 
 -- | Lift a `Pipe a a` to `Pipe (Maybe a) (Maybe a)`.
 -- |
