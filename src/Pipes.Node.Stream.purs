@@ -7,6 +7,7 @@ import Control.Monad.Rec.Class (class MonadRec, Step(..), tailRecM, whileJust)
 import Control.Monad.ST.Class (liftST)
 import Control.Monad.ST.Ref as STRef
 import Control.Monad.Trans.Class (lift)
+import Control.Parallel (parOneOf)
 import Data.Maybe (Maybe(..), maybe)
 import Data.Traversable (for_, traverse, traverse_)
 import Data.Tuple.Nested ((/\))
@@ -118,7 +119,7 @@ fromTransform t = do
       ended <- liftEffect $ O.isWritableEnded t
       if needsDrain then do
         yieldWhileReadable
-        liftAff $ O.awaitWritableOrClosed t
+        liftAff $ parOneOf [O.awaitWritableOrClosed t, O.awaitReadableOrClosed t]
         pure $ Loop unit
       else if ended then
         cleanup $> Done unit

@@ -172,9 +172,10 @@ unsafeFromStringWritable :: forall r. Stream.Writable r -> Writable String
 unsafeFromStringWritable = unsafeCoerce
 
 awaitReadableOrClosed :: forall s a. Read s a => s -> Aff Unit
-awaitReadableOrClosed s = do
+awaitReadableOrClosed s = Aff.supervise do
   fiber <-
-    Aff.forkAff $ parOneOf
+    Aff.forkAff
+    $ parOneOf
       [ onceAff0 readableH s $> Right unit
       , onceAff0 closeH s $> Right unit
       , Left <$> onceAff1 errorH s
@@ -189,14 +190,20 @@ awaitReadableOrClosed s = do
     Aff.killFiber (error "") fiber
 
 awaitFinished :: forall s a. Write s a => s -> Aff Unit
-awaitFinished s = do
+awaitFinished s = Aff.supervise do
   fiber <- Aff.forkAff $ onceAff0 finishH s
   finished <- liftEffect $ isWritableFinished s
   if not finished then Aff.joinFiber fiber else Aff.killFiber (error "") fiber
 
 awaitWritableOrClosed :: forall s a. Write s a => s -> Aff Unit
-awaitWritableOrClosed s = do
-  fiber <- Aff.forkAff $ parOneOf [ onceAff0 drainH s $> Right unit, onceAff0 closeH s $> Right unit, Left <$> onceAff1 errorH s ]
+awaitWritableOrClosed s = Aff.supervise do
+  fiber <-
+    Aff.forkAff
+    $ parOneOf
+        [ onceAff0 drainH s $> Right unit
+        , onceAff0 closeH s $> Right unit
+        , Left <$> onceAff1 errorH s
+        ]
   closed <- liftEffect $ isClosed s
   writeEnded <- liftEffect $ isWritableEnded s
   writable <- liftEffect $ isWritable s
