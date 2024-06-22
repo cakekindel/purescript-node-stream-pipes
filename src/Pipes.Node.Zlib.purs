@@ -12,31 +12,34 @@ import Node.Buffer (Buffer)
 import Node.Stream.Object as O
 import Node.Zlib as Zlib
 import Node.Zlib.Types (ZlibStream)
-import Pipes.Core (Pipe)
-import Pipes.Node.Stream (fromTransform)
+import Pipes.Async (AsyncPipe)
+import Pipes.Node.Stream (TransformContext, fromTransform)
 
-fromZlib :: forall r m. MonadAff m => MonadThrow Error m => Effect (ZlibStream r) -> Pipe (Maybe Buffer) (Maybe Buffer) m Unit
-fromZlib z = do
-  raw <- liftEffect $ Zlib.toDuplex <$> z
-  fromTransform $ O.unsafeCoerceTransform raw
+type X = TransformContext Buffer Buffer
 
-gzip :: forall m. MonadAff m => MonadThrow Error m => Pipe (Maybe Buffer) (Maybe Buffer) m Unit
+fromZlib :: forall r m. MonadAff m => MonadThrow Error m => Effect (ZlibStream r) -> AsyncPipe X (Maybe Buffer) (Maybe Buffer) m
+fromZlib z =
+  fromTransform do
+    raw <- liftEffect $ Zlib.toDuplex <$> z
+    pure $ O.unsafeCoerceTransform raw
+
+gzip :: forall m. MonadAff m => MonadThrow Error m => AsyncPipe X (Maybe Buffer) (Maybe Buffer) m
 gzip = fromZlib Zlib.createGzip
 
-gunzip :: forall m. MonadAff m => MonadThrow Error m => Pipe (Maybe Buffer) (Maybe Buffer) m Unit
+gunzip :: forall m. MonadAff m => MonadThrow Error m => AsyncPipe X (Maybe Buffer) (Maybe Buffer) m
 gunzip = fromZlib Zlib.createGunzip
 
-unzip :: forall m. MonadAff m => MonadThrow Error m => Pipe (Maybe Buffer) (Maybe Buffer) m Unit
+unzip :: forall m. MonadAff m => MonadThrow Error m => AsyncPipe X (Maybe Buffer) (Maybe Buffer) m
 unzip = fromZlib Zlib.createUnzip
 
-inflate :: forall m. MonadAff m => MonadThrow Error m => Pipe (Maybe Buffer) (Maybe Buffer) m Unit
+inflate :: forall m. MonadAff m => MonadThrow Error m => AsyncPipe X (Maybe Buffer) (Maybe Buffer) m
 inflate = fromZlib Zlib.createInflate
 
-deflate :: forall m. MonadAff m => MonadThrow Error m => Pipe (Maybe Buffer) (Maybe Buffer) m Unit
+deflate :: forall m. MonadAff m => MonadThrow Error m => AsyncPipe X (Maybe Buffer) (Maybe Buffer) m
 deflate = fromZlib Zlib.createDeflate
 
-brotliCompress :: forall m. MonadAff m => MonadThrow Error m => Pipe (Maybe Buffer) (Maybe Buffer) m Unit
+brotliCompress :: forall m. MonadAff m => MonadThrow Error m => AsyncPipe X (Maybe Buffer) (Maybe Buffer) m
 brotliCompress = fromZlib Zlib.createBrotliCompress
 
-brotliDecompress :: forall m. MonadAff m => MonadThrow Error m => Pipe (Maybe Buffer) (Maybe Buffer) m Unit
+brotliDecompress :: forall m. MonadAff m => MonadThrow Error m => AsyncPipe X (Maybe Buffer) (Maybe Buffer) m
 brotliDecompress = fromZlib Zlib.createBrotliDecompress

@@ -31,12 +31,8 @@ traverse :: forall a b m. MonadRec m => (b -> a -> m b) -> b -> Producer a m Uni
 traverse f b0 p0 =
   flip tailRecM (p0 /\ b0) \(p /\ b) ->
     case p of
-      Respond a m -> do
-        b' <- f b a
-        pure $ Loop $ m unit /\ b'
-      M m -> do
-        n <- m
-        pure $ Loop $ (n /\ b)
+      Respond a m -> Loop <$> (m unit /\ _) <$> f b a
+      M m -> Loop <$> (_ /\ b) <$> m
       Request _ _ -> pure $ Done b
       Pure _ -> pure $ Done b
 
