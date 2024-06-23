@@ -147,7 +147,6 @@ fromTransform t =
         let s = transformStream x
         readEnded <- liftEffect $ O.isReadableEnded s
         if readEnded then do
-          transformCleanup x
           pure $ AsyncPipe.ReadOk Nothing
         else
           maybe AsyncPipe.ReadWouldBlock (AsyncPipe.ReadOk <<< Just) <$> maybeReadResult <$> liftEffect (O.read s)
