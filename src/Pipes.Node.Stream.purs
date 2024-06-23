@@ -113,7 +113,7 @@ fromTransform
    . MonadThrow Error m
   => MonadAff m
   => Effect (O.Transform a b)
-  -> AsyncPipe (TransformContext a b) (Maybe a) (Maybe b) m
+  -> AsyncPipe (TransformContext a b) m (Maybe a) (Maybe b)
 fromTransform t =
   let
     init = do

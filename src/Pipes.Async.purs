@@ -21,6 +21,7 @@ import Data.Either (Either(..), either)
 import Data.Generic.Rep (class Generic)
 import Data.Maybe (Maybe(..), isNothing)
 import Data.Newtype (unwrap)
+import Data.Profunctor (class Profunctor)
 import Data.Show.Generic (genericShow)
 import Data.Time.Duration (Milliseconds)
 import Data.Traversable (traverse_)
@@ -92,7 +93,7 @@ instance Show a => Show (ReadResult a) where show = genericShow
 -- |    - Attempt to read a chunk
 -- | - `x -> m ReadSignal`
 -- |    - Block until the pipe is readable again (or reading must stop)
-data AsyncPipe x a b m =
+data AsyncPipe x m a b =
   AsyncPipe
     (m x)
     (x -> a -> m WriteResult)
@@ -100,9 +101,22 @@ data AsyncPipe x a b m =
     (x -> m (ReadResult b))
     (x -> m ReadSignal)
 
+instance Monad m => Functor (AsyncPipe x m a) where
+  map f (AsyncPipe init w aw r ar) = AsyncPipe init w aw (map (map f) <<< r) ar
+
+instance Monad m => Profunctor (AsyncPipe x m) where
+  dimap :: forall a b c d. (a -> b) -> (c -> d) -> _ b c -> _ a d
+  dimap ab cd (AsyncPipe init w aw r ar) =
+    AsyncPipe
+      init
+      (\x -> w x <<< ab)
+      aw
+      (map (map cd) <<< r)
+      ar
+
 -- | Wraps all fields of an `AsyncPipe` with logging to debug
 -- | behavior and timing.
-debug :: forall x a b m. MonadAff m => String -> AsyncPipe x a b m -> AsyncPipe x a b m
+debug :: forall x a b m. MonadAff m => String -> AsyncPipe x m a b -> AsyncPipe x m a b
 debug c (AsyncPipe init write awaitWrite read awaitRead) =
   let
     logL m = liftEffect $ log $ "[" <> c <> "] " <> m
@@ -188,7 +202,7 @@ debug c (AsyncPipe init write awaitWrite read awaitRead) =
 -- | * `read` will pass chunks to `parse` as fast as `parse` allows
 -- | * `parse` will parse chunks and yield them to `encode` as soon as they're ready
 -- | * `encode` will encode chunks and yield them to `write` as soon as they're ready
-sync :: forall x a b f p e m. MonadError e m => Alternative p => Parallel p m => MonadFork f m => MonadAff m => AsyncPipe x (Maybe a) (Maybe b) m -> Pipe (Maybe a) (Maybe b) m Unit
+sync :: forall x a b f p e m. MonadError e m => Alternative p => Parallel p m => MonadFork f m => MonadAff m => AsyncPipe x m (Maybe a) (Maybe b) -> Pipe (Maybe a) (Maybe b) m Unit
 sync (AsyncPipe init write awaitWrite read awaitRead) =
   let
     liftPipe :: forall r. (Proxy _ _ _ _ m) r -> ExceptT (Step _ _) (Proxy _ _ _ _ m) r
@@ -243,7 +257,7 @@ pipeAsync
   => MonadAff m
   => MonadBracket Error f m
   => Producer (Maybe a) m Unit
-  -> AsyncPipe x (Maybe a) (Maybe b) m
+  -> AsyncPipe x m (Maybe a) (Maybe b)
   -> Producer (Maybe b) m Unit
 pipeAsync prod (AsyncPipe init write awaitWrite read awaitRead) =
   do
