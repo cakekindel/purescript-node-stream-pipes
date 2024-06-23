@@ -5,8 +5,6 @@ import Prelude hiding (join)
 import Control.Monad.Error.Class (class MonadThrow, throwError)
 import Control.Monad.Rec.Class (class MonadRec, Step(..), tailRecM)
 import Control.Monad.ST.Class (liftST)
-import Control.Monad.ST.Global (Global)
-import Control.Monad.ST.Ref (STRef)
 import Control.Monad.ST.Ref as ST.Ref
 import Control.Monad.ST.Ref as STRef
 import Control.Monad.Trans.Class (lift)
@@ -15,9 +13,9 @@ import Data.Traversable (for_, traverse_)
 import Data.Tuple.Nested ((/\))
 import Effect (Effect)
 import Effect.Aff.Class (class MonadAff, liftAff)
-import Effect.Class (class MonadEffect, liftEffect)
+import Effect.Class (liftEffect)
 import Effect.Exception (Error)
-import Node.Stream.Object (WriteResult(..), maybeReadResult)
+import Node.Stream.Object (ReadResult(..), WriteResult(..))
 import Node.Stream.Object as O
 import Pipes (await, yield)
 import Pipes (for) as P
@@ -90,77 +88,60 @@ fromWritable w = do
 
   tailRecM go unit
 
-newtype TransformContext a b =
-  TransformContext
-    { stream :: O.Transform a b
-    , removeErrorListener :: Effect Unit
-    , errorST :: STRef Global (Maybe Error)
-    }
-
-transformCleanup :: forall m a b. MonadEffect m => TransformContext a b -> m Unit
-transformCleanup (TransformContext {removeErrorListener}) = do
-  liftEffect removeErrorListener
-
-transformStream :: forall a b. TransformContext a b -> O.Transform a b
-transformStream (TransformContext {stream}) = stream
-
-transformRethrow :: forall m a b. MonadThrow Error m => MonadEffect m => TransformContext a b -> m Unit
-transformRethrow (TransformContext {errorST}) = traverse_ throwError =<< liftEffect (liftST $ ST.Ref.read errorST)
+fromTransformEffect
+  :: forall a b m
+   . MonadThrow Error m
+  => MonadAff m
+  => Effect (O.Transform a b)
+  -> AsyncPipe (Maybe a) (Maybe b) m Unit
+fromTransformEffect = fromTransform <=< liftEffect
 
 -- | Convert a `Transform` stream to an `AsyncPipe`.
 fromTransform
   :: forall a b m
    . MonadThrow Error m
   => MonadAff m
-  => Effect (O.Transform a b)
-  -> AsyncPipe (TransformContext a b) m (Maybe a) (Maybe b)
-fromTransform t =
-  let
-    init = do
-      stream <- liftEffect t
-      { error: errorST, cancel: removeErrorListener } <- liftEffect $ O.withErrorST stream
-      pure $ TransformContext {errorST, removeErrorListener, stream}
-    write x Nothing = do
-      let s = transformStream x
-      liftEffect $ O.end s
-      pure AsyncPipe.WriteEnded
-    write x (Just a) = do
-      transformRethrow x
-      let s = transformStream x
-      w <- liftEffect $ O.write s a
-      pure $ case w of
-        WriteOk -> AsyncPipe.WriteAgain
-        WriteWouldBlock -> AsyncPipe.WriteNeedsDrain
-    awaitWrite x = do
-      transformRethrow x
-      let s = transformStream x
-      liftAff $ O.awaitWritableOrClosed s
-      ended <- liftEffect $ O.isWritableEnded s
-      if ended then
-        pure $ AsyncPipe.WriteSignalEnded
-      else do
-        liftAff $ O.awaitWritableOrClosed s
-        pure $ AsyncPipe.WriteSignalOk
-    read x =
-      do
-        transformRethrow x
-        let s = transformStream x
-        readEnded <- liftEffect $ O.isReadableEnded s
-        if readEnded then do
-          pure $ AsyncPipe.ReadOk Nothing
-        else
-          maybe AsyncPipe.ReadWouldBlock (AsyncPipe.ReadOk <<< Just) <$> maybeReadResult <$> liftEffect (O.read s)
-    awaitRead x = do
-      transformRethrow x
-      let s = transformStream x
-      ended <- liftEffect $ O.isReadableEnded s
-      if ended then
-        pure $ AsyncPipe.ReadSignalEnded
-      else do
-        liftAff $ O.awaitReadableOrClosed s
-        pure $ AsyncPipe.ReadSignalOk
-  in
-    AsyncPipe init write awaitWrite read awaitRead
+  => O.Transform a b
+  -> AsyncPipe (Maybe a) (Maybe b) m Unit
+fromTransform stream = do
+    { error: errorST, cancel: removeErrorListener } <- liftEffect $ O.withErrorST stream
+    let
+      rethrow = traverse_ throwError =<< liftEffect (liftST $ ST.Ref.read errorST)
+      cleanup = liftEffect removeErrorListener
+
+      writeSignal =
+        liftEffect (O.isWritableEnded stream)
+        <#> if _ then AsyncPipe.WriteSignalEnded else AsyncPipe.WriteSignalOk
+
+      readSignal =
+        liftEffect (O.isReadableEnded stream)
+        <#> if _ then AsyncPipe.ReadSignalEnded else AsyncPipe.ReadSignalOk
+
+      writeResult WriteOk = AsyncPipe.WriteAgain
+      writeResult WriteWouldBlock = AsyncPipe.WriteNeedsDrain
+
+      readResult (ReadJust a) = AsyncPipe.ReadOk (Just a)
+      readResult ReadWouldBlock = AsyncPipe.ReadWouldBlock
+
+      awaitWritable = liftAff $ O.awaitWritableOrClosed stream
+      awaitReadable = liftAff $ O.awaitReadableOrClosed stream
+
+      awaitWrite = rethrow *> awaitWritable *> writeSignal
+      awaitRead = rethrow *> awaitReadable *> readSignal
+
+      whenReadNotEnded m =
+        liftEffect (O.isReadableEnded stream)
+          >>= if _ then pure $ AsyncPipe.ReadOk Nothing else m
+
+      readNow = readResult <$> liftEffect (O.read stream)
+      writeNow a = writeResult <$> liftEffect (O.write stream a)
+
+      read = rethrow *> whenReadNotEnded readNow
+
+      write Nothing = liftEffect (O.end stream) $> AsyncPipe.WriteEnded
+      write (Just a) = rethrow *> writeNow a
+
+    AsyncIO ({write, awaitWrite, read, awaitRead} /\ cleanup)
 
 -- | Given a `Producer` of values, wrap them in `Just`.
 -- |

@@ -150,8 +150,8 @@ spec =
               cbor :: Buffer <- Pipe.Collect.toBuffer
                 $ Pipe.FS.read a
                   >-> Pipe.Node.inEOS (Pipe.Buffer.toString UTF8)
-                  >-/-> Pipe.Node.fromTransform csvDecode
-                  >-/-> Pipe.Node.fromTransform cborEncode
+                  >-/-> Pipe.Node.fromTransformEffect csvDecode
+                  >-/-> Pipe.Node.fromTransformEffect cborEncode
                   >-> Pipe.Node.unEOS
               f :: Array Foreign <- liftEffect $ cborDecodeSync cbor
               ppl <- traverse (liftEither <<< lmap (error <<< show) <<< runExcept <<< readImpl) f
@@ -163,8 +163,8 @@ spec =
               cbor :: Buffer <- Pipe.Collect.toBuffer
                 $ Pipe.FS.read a
                   >-> Pipe.Node.inEOS (Pipe.Buffer.toString UTF8)
-                  >-> sync (Pipe.Node.fromTransform csvDecode)
-                  >-> sync (Pipe.Node.fromTransform cborEncode)
+                  >-> sync (Pipe.Node.fromTransformEffect csvDecode)
+                  >-> sync (Pipe.Node.fromTransformEffect cborEncode)
                   >-> Pipe.Node.unEOS
               f :: Array Foreign <- liftEffect $ cborDecodeSync cbor
               ppl <- traverse (liftEither <<< lmap (error <<< show) <<< runExcept <<< readImpl) f
@@ -188,7 +188,7 @@ spec =
               Pipe.Collect.toMonoid
               $ Pipe.FS.read a
                 >-/-> Pipe.Zlib.gzip
-                >-/-> Pipe.Node.fromTransform slowTransform
+                >-/-> Pipe.Node.fromTransformEffect slowTransform
                 >-/-> Pipe.Zlib.gunzip
                 >-> Pipe.Node.unEOS
                 >-> Pipe.Buffer.toString UTF8
@@ -201,7 +201,7 @@ spec =
               Pipe.Collect.toMonoid
               $ Pipe.FS.read a
                 >-> sync Pipe.Zlib.gzip
-                >-> sync (Pipe.Node.fromTransform slowTransform)
+                >-> sync (Pipe.Node.fromTransformEffect slowTransform)
                 >-> sync Pipe.Zlib.gunzip
                 >-> Pipe.Node.unEOS
                 >-> Pipe.Buffer.toString UTF8
@@ -210,10 +210,19 @@ spec =
       around tmpFile $ it "file >-> discardTransform" \(p :: String) -> do
         liftEffect $ FS.writeTextFile UTF8 p "foo"
         r <- reader p
-        out :: List.List Int <- Pipe.toListM $ r >-/-> Pipe.Node.fromTransform discardTransform >-> Pipe.Node.unEOS
+        out :: List.List Int <-
+          Pipe.toListM
+            $ r
+                >-/-> Pipe.Node.fromTransformEffect discardTransform
+                >-> Pipe.Node.unEOS
         out `shouldEqual` List.Nil
       around tmpFile $ it "file >-> charsTransform" \(p :: String) -> do
         liftEffect $ FS.writeTextFile UTF8 p "foo bar"
         r <- reader p
-        out :: List.List String <- Pipe.toListM $ r >-> Pipe.Node.inEOS (Pipe.Buffer.toString UTF8) >-/-> Pipe.Node.fromTransform charsTransform >-> Pipe.Node.unEOS
+        out :: List.List String <-
+          Pipe.toListM $
+            r
+            >-> Pipe.Node.inEOS (Pipe.Buffer.toString UTF8)
+            >-/-> Pipe.Node.fromTransformEffect charsTransform
+            >-> Pipe.Node.unEOS
         out `shouldEqual` List.fromFoldable [ "f", "o", "o", " ", "b", "a", "r" ]
