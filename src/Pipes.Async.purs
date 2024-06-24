@@ -8,7 +8,7 @@ import Control.Monad.Error.Class (class MonadError, class MonadThrow, catchError
 import Control.Monad.Except (ExceptT, runExceptT)
 import Control.Monad.Fork.Class (class MonadBracket, class MonadFork, fork)
 import Control.Monad.Maybe.Trans (MaybeT(..), runMaybeT)
-import Control.Monad.Morph (hoist)
+import Control.Monad.Morph (class MFunctor, hoist)
 import Control.Monad.Rec.Class (class MonadRec, Step(..), tailRecM)
 import Control.Monad.ST.Class (liftST)
 import Control.Monad.ST.Ref (STRef)
@@ -130,6 +130,18 @@ getAsyncIO (Pure _) = pure Nothing
 
 instance MonadTrans (AsyncPipe a b) where
   lift = M <<< map Pure
+
+instance MFunctor (AsyncPipe a b) where
+  hoist _ (Pure a) = Pure a
+  hoist f (M m) = M $ f $ hoist f <$> m
+  hoist f (AsyncIO ({read, write, awaitWrite, awaitRead} /\ m)) =
+    AsyncIO
+      $ { read: f read
+        , write: f <<< write
+        , awaitWrite: f awaitWrite
+        , awaitRead: f awaitRead
+        }
+        /\ hoist f m
 
 instance Monad m => Functor (AsyncPipe a b m) where
   map f (Pure r) = Pure $ f r
