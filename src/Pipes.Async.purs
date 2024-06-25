@@ -29,7 +29,6 @@ import Data.Tuple.Nested (type (/\), (/\))
 import Effect.Aff.Class (class MonadAff, liftAff)
 import Effect.Class (class MonadEffect, liftEffect)
 import Effect.Console (log)
-import Effect.Exception (Error, error)
 import Effect.Now as Now
 import Pipes (await, yield)
 import Pipes.Collect as Collect
@@ -322,19 +321,19 @@ sync m =
 -- |
 -- | If the consuming half fails, the error is caught, the producing half is killed, and the error is rethrown.
 pipeAsync
-  :: forall f m a b
+  :: forall e f m a b
    . MonadRec m
   => MonadAff m
-  => MonadBracket Error f m
+  => MonadBracket e f m
   => Producer (Maybe a) m Unit
   -> AsyncPipe (Maybe a) (Maybe b) m Unit
   -> Producer (Maybe b) m Unit
 pipeAsync prod m =
   lift (getAsyncIO m)
     >>= case _ of
-          Nothing -> throwError $ error "`pipeAsync` invoked on `AsyncPipe` that did not have `AsyncIO`"
+          Nothing -> pure unit
           Just ({write, read, awaitWrite, awaitRead} /\ done) -> do
-            errST :: STRef _ (Maybe Error) <- lift $ liftEffect $ liftST $ ST.Ref.new Nothing
+            errST :: STRef _ (Maybe e) <- lift $ liftEffect $ liftST $ ST.Ref.new Nothing
             killST :: STRef _ Boolean <- lift $ liftEffect $ liftST $ ST.Ref.new false
 
             let
