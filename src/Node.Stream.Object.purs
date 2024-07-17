@@ -191,9 +191,17 @@ awaitReadableOrClosed s = Aff.supervise do
 
 awaitFinished :: forall s a. Write s a => s -> Aff Unit
 awaitFinished s = Aff.supervise do
-  fiber <- Aff.forkAff $ onceAff0 finishH s
+  fiber <-
+    Aff.forkAff
+    $ parOneOf
+        [ onceAff0 finishH s $> Right unit
+        , Left <$> onceAff1 errorH s
+        ]
   finished <- liftEffect $ isWritableFinished s
-  if not finished then Aff.joinFiber fiber else Aff.killFiber (error "") fiber
+  if not finished then
+    liftEither =<< Aff.joinFiber fiber
+  else
+    Aff.killFiber (error "") fiber
 
 awaitWritableOrClosed :: forall s a. Write s a => s -> Aff Unit
 awaitWritableOrClosed s = Aff.supervise do
